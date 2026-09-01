@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "types": ["@cloudflare/workers-types", "vite/client", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "worker/**/*.ts", "shared/**/*.ts", "vite.config.ts"]
+}
+

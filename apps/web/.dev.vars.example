@@ -1,0 +1,11 @@
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+APP_ORIGIN=http://localhost:8787
+# Optional: only required for account deletion (DELETE /api/account), which
+# calls the Supabase Auth Admin API to permanently delete the auth.users row
+# (see worker/admin/supabaseAdmin.ts and docs/deployment.md). Never required
+# for any other route -- leave unset unless you need that endpoint to work.
+# Treat this value like a root credential: never commit it, never log it,
+# and never expose it to the browser.
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+

@@ -1,0 +1,11 @@
+-- Local development seed data.
+--
+-- UpgradR ships no demo/fixture rows here: every table is owner-scoped via
+-- auth.users, and creating a realistic seed would require also seeding
+-- auth.users (normally done through Supabase Auth, not plain SQL). Use the
+-- app's sign-up flow (magic link) against the local stack to create a user,
+-- then exercise the schema through the API.
+--
+-- Database-level fixtures for automated testing live under
+-- supabase/tests/database and create their own throwaway auth.users rows
+-- inside a rolled-back transaction.

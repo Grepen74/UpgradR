@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "upgradr-mcp-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-31",
+  "vars": {
+    "MCP_RESOURCE_URL": "http://localhost:8788",
+    "MCP_ALLOWED_HOSTNAMES": "localhost,127.0.0.1",
+    "MCP_REQUIRED_SCOPE": "mcp"
+  }
+}

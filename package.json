@@ -1,0 +1,22 @@
+{
+  "name": "upgradr",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "e2e"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "dev:web": "npm run dev --workspace @upgradr/web",
+    "dev:mcp": "npm run dev --workspace @upgradr/mcp-worker"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
+

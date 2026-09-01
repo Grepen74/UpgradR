@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "upgradr-web",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-31",
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "vars": {
+    "APP_ORIGIN": "http://localhost:8787"
+  }
+}

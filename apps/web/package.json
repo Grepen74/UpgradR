@@ -1,0 +1,39 @@
+{
+  "name": "@upgradr/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:client && wrangler deploy --dry-run --outdir dist/worker",
+    "build:client": "vite build",
+    "dev": "npm run build:client && wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.57.2",
+    "@upgradr/contracts": "0.1.0",
+    "@upgradr/domain": "0.1.0",
+    "@upgradr/profile-import": "0.1.0",
+    "hono": "^4.9.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250831.0",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.33.1"
+  }
+}
+
