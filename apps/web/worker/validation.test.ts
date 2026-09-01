@@ -5,12 +5,15 @@ import {
   accountDeletionSchema,
   activityEntityTypeSchema,
   applicationIdSchema,
+  applicationLabelAttachSchema,
   companyCreateSchema,
   companyUpdateSchema,
   contactCreateSchema,
   contactUpdateSchema,
   documentKindSchema,
   documentLinkCreateSchema,
+  labelCreateSchema,
+  labelUpdateSchema,
   magicLinkSchema,
   noteCreateSchema,
   noteUpdateSchema,
@@ -355,5 +358,62 @@ describe("accountDeletionSchema", () => {
       false,
     );
     expect(accountDeletionSchema.safeParse({ confirmation: "yes" }).success).toBe(false);
+  });
+});
+
+describe("labelCreateSchema", () => {
+  it("accepts a minimal label with just a name", () => {
+    expect(labelCreateSchema.safeParse({ name: "Remote" }).success).toBe(true);
+  });
+
+  it("accepts a name with a valid hex color", () => {
+    expect(labelCreateSchema.safeParse({ name: "Priority", color: "#7b61ff" }).success).toBe(true);
+  });
+
+  it("rejects a blank name", () => {
+    expect(labelCreateSchema.safeParse({ name: "   " }).success).toBe(false);
+  });
+
+  it("rejects an overlong name", () => {
+    expect(labelCreateSchema.safeParse({ name: "x".repeat(41) }).success).toBe(false);
+  });
+
+  it("rejects a malformed color", () => {
+    expect(labelCreateSchema.safeParse({ name: "Priority", color: "violet" }).success).toBe(false);
+  });
+
+  it("allows an explicit null color", () => {
+    expect(labelCreateSchema.safeParse({ name: "Priority", color: null }).success).toBe(true);
+  });
+});
+
+describe("labelUpdateSchema", () => {
+  it("allows a partial rename", () => {
+    expect(labelUpdateSchema.safeParse({ name: "Dream job" }).success).toBe(true);
+  });
+
+  it("allows an empty update", () => {
+    expect(labelUpdateSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("rejects a blank name when provided", () => {
+    expect(labelUpdateSchema.safeParse({ name: "" }).success).toBe(false);
+  });
+});
+
+describe("applicationLabelAttachSchema", () => {
+  it("accepts a valid label id", () => {
+    expect(
+      applicationLabelAttachSchema.safeParse({ labelId: "5b3f3d3a-7f0a-4b8d-9d4a-2f6b6b6b6b6b" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects a non-uuid label id", () => {
+    expect(applicationLabelAttachSchema.safeParse({ labelId: "not-a-uuid" }).success).toBe(false);
+  });
+
+  it("rejects a missing label id", () => {
+    expect(applicationLabelAttachSchema.safeParse({}).success).toBe(false);
   });
 });

@@ -1,8 +1,3 @@
-import {
-  normalizeHttpUrlInput,
-  safeSourceUrlSchema,
-  type ApplicationStatus,
-} from "@upgradr/contracts";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
@@ -22,9 +17,11 @@ import { AnalyticsTab } from "./AnalyticsTab";
 import { CompaniesTab } from "./CompaniesTab";
 import { ContactsTab } from "./ContactsTab";
 import { DocumentsTab } from "./DocumentsTab";
+import { KanbanBoard } from "./KanbanBoard";
 import { NotesTab } from "./NotesTab";
+import { OpportunityDetail } from "./OpportunityDetail";
 import { ConfirmButton, StatusMessage } from "./components/Feedback";
-import { availableNextStatuses } from "./lib/applications";
+import { isApplicationsRoute, useOpportunityRoute } from "./lib/routing";
 import { formatCommaList, parseCommaList } from "./lib/preferences";
 import { isTaskOverdue } from "./lib/tasks";
 import { ProfileImportsTab } from "./ProfileImportsTab";
@@ -312,7 +309,15 @@ function Dashboard({
   onRefresh: () => Promise<void>;
   onAccountDeleted: () => void;
 }) {
-  const [tab, setTab] = useState<DashboardTab>("overview");
+  const [tab, setTab] = useState<DashboardTab>(() =>
+    isApplicationsRoute() ? "applications" : "overview",
+  );
+  const { selectedApplicationId, openApplication, closeApplication } = useOpportunityRoute();
+
+  function openOpportunity(applicationId: string) {
+    setTab("applications");
+    openApplication(applicationId);
+  }
 
   return (
     <section className="dashboard">
@@ -341,7 +346,11 @@ function Dashboard({
         <OverviewTab dashboard={dashboard} applications={applications} />
       ) : null}
       {tab === "applications" ? (
-        <ApplicationsTab applications={applications} onRefresh={onRefresh} />
+        <KanbanBoard
+          applications={applications}
+          onRefresh={onRefresh}
+          onOpenApplication={openOpportunity}
+        />
       ) : null}
       {tab === "tasks" ? <TasksTab applications={applications} /> : null}
       {tab === "companies" ? <CompaniesTab /> : null}
@@ -355,6 +364,14 @@ function Dashboard({
       {tab === "preferences" ? <PreferencesTab /> : null}
       {tab === "agents" ? <ConnectedAgentsTab /> : null}
       {tab === "account" ? <AccountTab onAccountDeleted={onAccountDeleted} /> : null}
+
+      {selectedApplicationId ? (
+        <OpportunityDetail
+          applicationId={selectedApplicationId}
+          onClose={closeApplication}
+          onChanged={onRefresh}
+        />
+      ) : null}
     </section>
   );
 }
@@ -427,182 +444,6 @@ function OverviewTab({
           </ol>
         </aside>
       </div>
-    </>
-  );
-}
-
-function ApplicationsTab({
-  applications,
-  onRefresh,
-}: {
-  applications: ApplicationSummary[];
-  onRefresh: () => Promise<void>;
-}) {
-  const [showForm, setShowForm] = useState(false);
-  const [formMessage, setFormMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>();
-  const [updatingId, setUpdatingId] = useState<string>();
-
-  async function addOpportunity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    setSaving(true);
-    setFormMessage(undefined);
-
-    try {
-      const sourceUrl = normalizeHttpUrlInput(String(form.get("sourceUrl") ?? ""));
-      if (!safeSourceUrlSchema.safeParse(sourceUrl).success) {
-        throw new Error(
-          "Enter a valid job posting URL, such as https://www.example.com.",
-        );
-      }
-      await api.createApplication({
-        title: String(form.get("title") ?? ""),
-        companyName: String(form.get("companyName") ?? ""),
-        ...(String(form.get("location") ?? "")
-          ? { location: String(form.get("location") ?? "") }
-          : {}),
-        sourceUrl,
-        sourceProvider: new URL(sourceUrl).hostname,
-      });
-      formElement.reset();
-      setShowForm(false);
-      await onRefresh();
-    } catch (error) {
-      setFormMessage(error instanceof Error ? error.message : "Unable to add opportunity.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function changeStatus(applicationId: string, status: ApplicationStatus) {
-    setUpdatingId(applicationId);
-    setStatusMessage(undefined);
-    try {
-      await api.updateApplicationStatus(applicationId, status);
-      await onRefresh();
-    } catch (error) {
-      setStatusMessage(
-        error instanceof Error ? error.message : "Unable to update application status.",
-      );
-    } finally {
-      setUpdatingId(undefined);
-    }
-  }
-
-  return (
-    <>
-      <div className="panel-heading panel-heading-spaced">
-        <div>
-          <p className="eyebrow">Pipeline</p>
-          <h2>Every opportunity, one place to move it forward</h2>
-        </div>
-        <button className="button primary" onClick={() => setShowForm((value) => !value)}>
-          {showForm ? "Close form" : "Add opportunity"}
-        </button>
-      </div>
-
-      {showForm ? (
-        <form className="opportunity-form panel" onSubmit={(event) => void addOpportunity(event)}>
-          <div>
-            <label htmlFor="title">Role</label>
-            <input id="title" name="title" required maxLength={200} />
-          </div>
-          <div>
-            <label htmlFor="companyName">Company</label>
-            <input id="companyName" name="companyName" required maxLength={200} />
-          </div>
-          <div>
-            <label htmlFor="location">Location</label>
-            <input id="location" name="location" maxLength={200} />
-          </div>
-          <div className="wide">
-            <label htmlFor="sourceUrl">Job posting URL</label>
-            <input
-              id="sourceUrl"
-              name="sourceUrl"
-              type="text"
-              inputMode="url"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="www.example.com/jobs/role"
-              required
-              onBlur={(event) => {
-                event.currentTarget.value = normalizeHttpUrlInput(event.currentTarget.value);
-              }}
-            />
-          </div>
-          <div className="form-actions wide">
-            {formMessage ? <StatusMessage>{formMessage}</StatusMessage> : <span />}
-            <button className="button primary" disabled={saving}>
-              {saving ? "Saving..." : "Save opportunity"}
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      {statusMessage ? <StatusMessage>{statusMessage}</StatusMessage> : null}
-
-      <article className="panel">
-        {applications.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-icon">↗</span>
-            <h3>No opportunities yet</h3>
-            <p>Connect an MCP client or add an opportunity manually to get started.</p>
-          </div>
-        ) : (
-          <div className="opportunity-list">
-            {applications.map((application) => {
-              const nextStatuses = availableNextStatuses(application.current_status);
-              return (
-                <div className="opportunity opportunity-row" key={application.id}>
-                  <div>
-                    <strong>{application.title}</strong>
-                    <span>
-                      {application.company_name}
-                      {application.location ? ` · ${application.location}` : ""}
-                    </span>
-                  </div>
-                  <div className="opportunity-meta">
-                    <span className="status">{application.current_status}</span>
-                    {application.match_score === null ? null : (
-                      <span>{application.match_score}% match</span>
-                    )}
-                  </div>
-                  {nextStatuses.length > 0 ? (
-                    <label className="status-control">
-                      <span className="sr-only">Move {application.title} to a new status</span>
-                      <select
-                        aria-label={`Update status for ${application.title}`}
-                        disabled={updatingId === application.id}
-                        value=""
-                        onChange={(event) => {
-                          const status = event.target.value as ApplicationStatus;
-                          if (status) {
-                            void changeStatus(application.id, status);
-                          }
-                        }}
-                      >
-                        <option value="" disabled>
-                          Move to...
-                        </option>
-                        {nextStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </article>
     </>
   );
 }

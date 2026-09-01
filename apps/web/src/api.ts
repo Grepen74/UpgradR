@@ -30,6 +30,49 @@ export type ApplicationSummary = {
   mcp_client_id: string | null;
   created_at: string;
   updated_at: string;
+  labels: LabelSummary[];
+};
+
+export type LabelSummary = {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationStatusEvent = {
+  id: string;
+  from_status: ApplicationStatus | null;
+  to_status: ApplicationStatus;
+  note: string | null;
+  created_at: string;
+};
+
+export type MatchAssessment = {
+  id: string;
+  score: number | null;
+  rationale: string | null;
+  strengths: string[];
+  gaps: string[];
+  confidence: number | null;
+  assessed_by: string | null;
+  created_at: string;
+};
+
+export type ApplicationDetail = ApplicationSummary & {
+  company_id: string | null;
+  primary_contact_id: string | null;
+  external_id: string | null;
+  description: string | null;
+  compensation_min: number | null;
+  compensation_max: number | null;
+  compensation_currency: string | null;
+  match_rationale: string | null;
+  strengths: string[];
+  gaps: string[];
+  applied_at: string | null;
+  archived_at: string | null;
 };
 
 export type OAuthAuthorization = {
@@ -369,6 +412,40 @@ export const api = {
         body: JSON.stringify({ status, ...(note ? { note } : {}) }),
       },
     ),
+  getApplicationDetail: (id: string) =>
+    apiRequest<{
+      application: ApplicationDetail;
+      statusEvents: ApplicationStatusEvent[];
+      matchAssessments: MatchAssessment[];
+    }>(`/api/applications/${encodeURIComponent(id)}`),
+  attachLabel: (applicationId: string, labelId: string) =>
+    apiRequest<{ label: LabelSummary }>(
+      `/api/applications/${encodeURIComponent(applicationId)}/labels`,
+      {
+        method: "POST",
+        body: JSON.stringify({ labelId }),
+      },
+    ),
+  detachLabel: (applicationId: string, labelId: string) =>
+    apiRequest<{ detached: true }>(
+      `/api/applications/${encodeURIComponent(applicationId)}/labels/${encodeURIComponent(labelId)}`,
+      { method: "DELETE" },
+    ),
+  getLabels: () => apiRequest<{ labels: LabelSummary[] }>("/api/labels"),
+  createLabel: (input: { name: string; color?: string | null }) =>
+    apiRequest<{ label: LabelSummary }>("/api/labels", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateLabel: (id: string, input: { name?: string; color?: string | null }) =>
+    apiRequest<{ label: LabelSummary }>(`/api/labels/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deleteLabel: (id: string) =>
+    apiRequest<{ deleted: true }>(`/api/labels/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   getProfile: () => apiRequest<{ profile: CandidateProfile }>("/api/profile"),
   updateProfile: (input: { headline: string | null; summary: string | null }) =>
     apiRequest<{ profile: CandidateProfile }>("/api/profile", {

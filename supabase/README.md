@@ -33,6 +33,10 @@ Applied in filename order by `supabase db reset` / `supabase migration up`:
 | `20250115121000_mcp_pending_operations.sql` | `mcp_pending_operations`, confirm/cancel/cleanup functions |
 | `20250115121100_storage.sql` | private `documents` / `profile-imports` buckets and policies, `service_role` grants |
 | `20250115121200_mcp_scope_enforcement.sql` | OAuth-scope-aware RLS and direct-PostgREST bypass protection for MCP tokens |
+| `20250115121300_profile_import_review.sql` | Reviewable profile import staging tables and `confirm_profile_import()` |
+| `20250115121400_analytics.sql` | Read-only analytics views/functions backing `/api/analytics` |
+| `20250115121500_fix_app_schema_access.sql` | `grant usage on schema app to authenticated` (RLS policies call `app.*` helpers) |
+| `20250115121600_manual_labels.sql` | `labels`, `application_labels` (browser-only, MCP-blocked RLS) |
 
 ## Design notes
 

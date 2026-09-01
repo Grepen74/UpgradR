@@ -1,4 +1,4 @@
-import { jobProposalSchema, jobSearchPreferencesSchema } from "@upgradr/contracts";
+import { jobSearchPreferencesSchema } from "@upgradr/contracts";
 import { Hono } from "hono";
 
 import { recordActivityEvent } from "./activity";
@@ -7,20 +7,20 @@ import type { WebEnv } from "./env";
 import accountRoute from "./routes/account";
 import activityRoute from "./routes/activity";
 import analyticsRoute from "./routes/analytics";
+import applicationsRoute from "./routes/applications";
 import companiesRoute from "./routes/companies";
 import contactsRoute from "./routes/contacts";
 import documentsRoute from "./routes/documents";
+import labelsRoute from "./routes/labels";
 import notesRoute from "./routes/notes";
 import profileImportsRoute from "./routes/profileImports";
 import { isAllowedOrigin, securityHeaders } from "./security";
 import { createSupabaseServerClient } from "./supabase";
 import {
-  applicationIdSchema,
   magicLinkSchema,
   oauthDecisionSchema,
   oauthRevokeSchema,
   profileUpdateSchema,
-  statusTransitionSchema,
   taskCreateSchema,
   taskUpdateSchema,
 } from "./validation";
@@ -385,119 +385,6 @@ app.patch("/api/preferences", async (context) => {
   return context.json({ saved: true });
 });
 
-app.get("/api/applications", async (context) => {
-  const auth = await authenticated(context);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const { data, error } = await auth.supabase
-    .from("applications")
-    .select(
-      "id,title,company_name,location,source_url,source_provider,current_status,match_score,confidence,mcp_client_id,created_at,updated_at",
-    )
-    .eq("owner_id", auth.userId)
-    .order("updated_at", { ascending: false })
-    .limit(100);
-  if (error) {
-    return context.json({ error: "Unable to load opportunities" }, 502);
-  }
-
-  return context.json({ applications: data });
-});
-
-app.post("/api/applications", async (context) => {
-  const auth = await authenticated(context);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const parsed = jobProposalSchema.safeParse(await context.req.json().catch(() => null));
-  if (!parsed.success) {
-    return context.json({ error: "Invalid opportunity" }, 400);
-  }
-  const proposal = parsed.data;
-
-  const { data, error } = await auth.supabase
-    .from("applications")
-    .insert({
-      owner_id: auth.userId,
-      title: proposal.title,
-      company_name: proposal.companyName,
-      location: proposal.location ?? null,
-      source_url: proposal.sourceUrl,
-      source_provider: proposal.sourceProvider,
-      external_id: proposal.externalId ?? null,
-      description: proposal.description ?? null,
-      compensation_min: proposal.compensationMin ?? null,
-      compensation_max: proposal.compensationMax ?? null,
-      compensation_currency: proposal.compensationCurrency?.toUpperCase() ?? null,
-      match_score: proposal.matchScore ?? null,
-      match_rationale: proposal.matchRationale ?? null,
-      strengths: proposal.strengths,
-      gaps: proposal.gaps,
-      confidence: proposal.confidence ?? null,
-      current_status: "saved",
-    })
-    .select("id")
-    .single();
-  if (error) {
-    const status = error.code === "23505" ? 409 : 502;
-    return context.json(
-      { error: status === 409 ? "This opportunity already exists" : "Unable to add opportunity" },
-      status,
-    );
-  }
-
-  await recordActivityEvent(auth, {
-    entityType: "application",
-    entityId: data.id,
-    eventType: "created",
-    payload: { title: proposal.title, companyName: proposal.companyName },
-  });
-
-  return context.json({ id: data.id }, 201);
-});
-
-app.post("/api/applications/:id/status", async (context) => {
-  const auth = await authenticated(context);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const applicationId = applicationIdSchema.safeParse(context.req.param("id"));
-  if (!applicationId.success) {
-    return context.json({ error: "Invalid application identifier" }, 400);
-  }
-
-  const parsed = statusTransitionSchema.safeParse(await context.req.json().catch(() => null));
-  if (!parsed.success) {
-    return context.json({ error: "Invalid status transition" }, 400);
-  }
-
-  const { data, error } = await auth.supabase.rpc("transition_application_status", {
-    p_application_id: applicationId.data,
-    p_new_status: parsed.data.status,
-    p_note: parsed.data.note ?? null,
-  });
-  if (error) {
-    console.error("Application status transition failed", { code: error.code });
-    return context.json(
-      { error: error.code === "P0002" ? "Application not found" : "Unable to move application" },
-      error.code === "P0002" ? 404 : 409,
-    );
-  }
-
-  await recordActivityEvent(auth, {
-    entityType: "application",
-    entityId: applicationId.data,
-    eventType: "status_changed",
-    payload: { status: parsed.data.status },
-  });
-
-  return context.json({ application: data });
-});
-
 app.get("/api/tasks", async (context) => {
   const auth = await authenticated(context);
   if (auth instanceof Response) {
@@ -588,6 +475,8 @@ app.patch("/api/tasks/:id", async (context) => {
   return context.json({ task: data });
 });
 
+app.route("/api/applications", applicationsRoute);
+app.route("/api/labels", labelsRoute);
 app.route("/api/companies", companiesRoute);
 app.route("/api/contacts", contactsRoute);
 app.route("/api/notes", notesRoute);

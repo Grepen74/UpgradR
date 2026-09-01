@@ -133,6 +133,28 @@ export const noteUpdateSchema = z.object({
   body: z.string().trim().min(1).max(8_000),
 });
 
+// Mirrors the public.labels.name / .color check constraints (see
+// supabase/migrations/20250115121600_manual_labels.sql).
+const labelColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, "Label color must be a 6-digit hex code, e.g. #7b61ff")
+  .nullable();
+
+export const labelCreateSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  color: labelColorSchema.optional(),
+});
+
+export const labelUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(40).optional(),
+  color: labelColorSchema.optional(),
+});
+
+export const applicationLabelAttachSchema = z.object({
+  labelId: z.uuid(),
+});
+
 // Mirrors the public.documents.kind and public.application_documents.role
 // check constraints (see ../shared/documents.ts, the single source of truth
 // for these enums).
