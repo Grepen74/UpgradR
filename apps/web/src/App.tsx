@@ -1,4 +1,8 @@
-import type { ApplicationStatus } from "@upgradr/contracts";
+import {
+  normalizeHttpUrlInput,
+  safeSourceUrlSchema,
+  type ApplicationStatus,
+} from "@upgradr/contracts";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
@@ -442,12 +446,18 @@ function ApplicationsTab({
 
   async function addOpportunity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setFormMessage(undefined);
 
     try {
-      const sourceUrl = String(form.get("sourceUrl") ?? "");
+      const sourceUrl = normalizeHttpUrlInput(String(form.get("sourceUrl") ?? ""));
+      if (!safeSourceUrlSchema.safeParse(sourceUrl).success) {
+        throw new Error(
+          "Enter a valid job posting URL, such as https://www.example.com.",
+        );
+      }
       await api.createApplication({
         title: String(form.get("title") ?? ""),
         companyName: String(form.get("companyName") ?? ""),
@@ -457,7 +467,7 @@ function ApplicationsTab({
         sourceUrl,
         sourceProvider: new URL(sourceUrl).hostname,
       });
-      event.currentTarget.reset();
+      formElement.reset();
       setShowForm(false);
       await onRefresh();
     } catch (error) {
@@ -510,7 +520,20 @@ function ApplicationsTab({
           </div>
           <div className="wide">
             <label htmlFor="sourceUrl">Job posting URL</label>
-            <input id="sourceUrl" name="sourceUrl" type="url" required />
+            <input
+              id="sourceUrl"
+              name="sourceUrl"
+              type="text"
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="www.example.com/jobs/role"
+              required
+              onBlur={(event) => {
+                event.currentTarget.value = normalizeHttpUrlInput(event.currentTarget.value);
+              }}
+            />
           </div>
           <div className="form-actions wide">
             {formMessage ? <StatusMessage>{formMessage}</StatusMessage> : <span />}
@@ -605,7 +628,8 @@ function TasksTab({ applications }: { applications: ApplicationSummary[] }) {
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setMessage(undefined);
 
@@ -617,7 +641,7 @@ function TasksTab({ applications }: { applications: ApplicationSummary[] }) {
         ...(dueAtInput ? { dueAt: new Date(dueAtInput).toISOString() } : {}),
         ...(applicationId ? { applicationId } : {}),
       });
-      event.currentTarget.reset();
+      formElement.reset();
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add follow-up task.");

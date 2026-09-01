@@ -25,7 +25,8 @@ export function CompaniesTab() {
 
   async function createCompany(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setMessage(undefined);
 
@@ -36,7 +37,7 @@ export function CompaniesTab() {
         industry: String(form.get("industry") ?? "") || null,
         sizeRange: String(form.get("sizeRange") ?? "") || null,
       });
-      event.currentTarget.reset();
+      formElement.reset();
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add company.");

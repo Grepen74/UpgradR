@@ -49,7 +49,8 @@ export function NotesTab({ applications }: { applications: ApplicationSummary[] 
 
   async function createNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setMessage(undefined);
 
@@ -62,7 +63,7 @@ export function NotesTab({ applications }: { applications: ApplicationSummary[] 
         ...(linkKind === "contact" ? { contactId: linkId } : {}),
         ...(linkKind === "application" ? { applicationId: linkId } : {}),
       });
-      event.currentTarget.reset();
+      formElement.reset();
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to add note.");

@@ -19,12 +19,21 @@ export const applicationStatuses = [
 export const applicationStatusSchema = z.enum(applicationStatuses);
 export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
 
-export const safeSourceUrlSchema = z
-  .url()
-  .refine((value) => {
+export function normalizeHttpUrlInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || /^[a-z][a-z\d+.-]*:/i.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed.startsWith("//") ? `https:${trimmed}` : `https://${trimmed}`;
+}
+
+export const safeSourceUrlSchema = z.preprocess(
+  (value) => (typeof value === "string" ? normalizeHttpUrlInput(value) : value),
+  z.url().refine((value) => {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:";
-  }, "Source URLs must use HTTP or HTTPS");
+  }, "Source URLs must use HTTP or HTTPS"),
+);
 
 export const jobProposalSchema = z.object({
   title: z.string().trim().min(1).max(200),

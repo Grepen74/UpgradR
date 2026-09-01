@@ -83,7 +83,7 @@ button {
   color: #171a22;
   font-size: clamp(3rem, 7vw, 6.6rem);
   line-height: 0.96;
-  letter-spacing: -0.065em;
+  letter-spacing: -0.035em;
 }
 
 .lede {
