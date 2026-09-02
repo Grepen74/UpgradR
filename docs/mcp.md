@@ -133,6 +133,49 @@ no service-role key and no hand-minted JWT. It requires `supabase start` and
   for the removed scope, while revoking it entirely gets the client rejected at
   the endpoint.
 
+### Testing with a real MCP client
+
+`.mcp.json` in the repository root registers the local Worker as a workspace
+MCP server for GitHub Copilot CLI:
+
+```json
+{
+  "mcpServers": {
+    "upgradr-local": {
+      "type": "http",
+      "url": "http://localhost:8788/mcp",
+      "tools": ["*"],
+      "timeout": 60000
+    }
+  }
+}
+```
+
+Copilot CLI performs the OAuth flow itself — it reads the 401 challenge,
+discovers the authorization server, dynamically registers a client, opens a
+browser, and caches the resulting token. Run `copilot` from the repository root
+and use `/mcp` to authenticate. Two prerequisites are easy to miss:
+
+1. `supabase start` and `npm run dev:mcp` must both be running, **and so must
+   `npm run dev:web`** — Supabase redirects `/authorize` to the app's own
+   consent screen on port 8787.
+2. You must already be signed in to the web app in the browser that opens, or
+   the consent screen has no session to authorize.
+
+ChatGPT cannot be used against this setup. Custom MCP servers there are
+connected from OpenAI's infrastructure rather than from the desktop app, so
+`localhost` would resolve on their side, and the endpoint must be public HTTPS.
+Tunnelling only the MCP endpoint is not sufficient either, because the
+protected-resource metadata still points at a `127.0.0.1` authorization server
+whose issuer is baked into the discovery documents and the `iss` claim of every
+token.
+
+Note that all local URLs are plain HTTP, while the MCP authorization spec
+requires authorization-server endpoints to use HTTPS. Development clients
+tolerate this; a strict client is entitled to refuse it. This is a local-testing
+affordance, not a portable guarantee, and it disappears once the hosted
+environment serves real HTTPS.
+
 ## Deployment gate
 
 Before enabling a hosted MCP endpoint, test authorization metadata, resource

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "upgradr-local": {
+      "type": "http",
+      "url": "http://localhost:8788/mcp",
+      "tools": ["*"],
+      "timeout": 60000
+    }
+  }
+}
