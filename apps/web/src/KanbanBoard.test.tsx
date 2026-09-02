@@ -226,6 +226,68 @@ describe("KanbanBoard", () => {
     expect(onOpenApplication).toHaveBeenCalledWith("app-1");
   });
 
+  it("opens the opportunity detail view when any non-interactive part of a card is clicked", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    const onOpenApplication = vi.fn();
+    render(
+      <KanbanBoard
+        applications={[makeApplication()]}
+        onRefresh={vi.fn()}
+        onOpenApplication={onOpenApplication}
+      />,
+    );
+
+    const meta = await screen.findByText("acme.example");
+    fireEvent.pointerDown(meta, { clientX: 40, clientY: 60 });
+    fireEvent.click(meta, { clientX: 41, clientY: 61 });
+
+    expect(onOpenApplication).toHaveBeenCalledTimes(1);
+    expect(onOpenApplication).toHaveBeenCalledWith("app-1");
+  });
+
+  it("does not open the detail view when a card press turns into a drag", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    const onOpenApplication = vi.fn();
+    render(
+      <KanbanBoard
+        applications={[makeApplication()]}
+        onRefresh={vi.fn()}
+        onOpenApplication={onOpenApplication}
+      />,
+    );
+
+    const meta = await screen.findByText("acme.example");
+    const card = meta.closest("article") as HTMLElement;
+
+    fireEvent.pointerDown(card, { clientX: 40, clientY: 60 });
+    fireEvent.dragStart(card, {
+      dataTransfer: { setData: vi.fn(), effectAllowed: "" },
+    });
+    fireEvent.click(card, { clientX: 220, clientY: 60 });
+
+    expect(onOpenApplication).not.toHaveBeenCalled();
+
+    // A plain click after the drag finishes opens the card again.
+    fireEvent.dragEnd(card);
+    fireEvent.pointerDown(card, { clientX: 40, clientY: 60 });
+    fireEvent.click(card, { clientX: 40, clientY: 60 });
+    expect(onOpenApplication).toHaveBeenCalledWith("app-1");
+  });
+
   it("shows manual labels and derived attention badges on a card", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = requestUrl(input);

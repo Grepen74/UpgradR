@@ -1,11 +1,48 @@
 :root {
-  color: #1f2430;
+  /* Design tokens. Every surface, control, and card should pull its colour,
+     radius, shadow, and motion from here so the views stay visually
+     consistent as new sections get added. */
+  --ink: #1f2430;
+  --ink-strong: #171a22;
+  --ink-muted: #5e6472;
+  --ink-subtle: #777d89;
+  --ink-faint: #a2a7b3;
+  --accent: #5b45d6;
+  --accent-strong: #4935be;
+  --accent-mid: #6952df;
+  --accent-soft: #eee9ff;
+  --accent-border: #a99ce9;
+  --danger: #b3401b;
+  --line: #e2dee7;
+  --line-strong: #d8d4df;
+  --line-faint: rgb(42 38 57 / 8%);
+  --surface: rgb(255 255 255 / 78%);
+  --surface-solid: #fff;
+  --surface-muted: rgb(255 255 255 / 70%);
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-2xl: 28px;
+  --shadow-sm: 0 2px 6px rgb(45 39 72 / 5%);
+  --shadow-md: 0 10px 30px rgb(45 39 72 / 9%);
+  --shadow-lg: 0 30px 80px rgb(45 39 72 / 12%);
+  --ring: 0 0 0 3px rgb(105 82 223 / 22%);
+  --motion: 140ms ease;
+
+  /* Lets height/min-height animate to and from `auto`, which is what makes the
+     Kanban board grow and shrink smoothly instead of snapping. Browsers
+     without support simply resize instantly. */
+  interpolate-size: allow-keywords;
+
+  color: var(--ink);
   background: #f4f1eb;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -19,12 +56,44 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+  color: inherit;
 }
 
 button {
   cursor: pointer;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* One consistent keyboard-focus treatment for every interactive surface,
+   instead of per-component rings that drift apart. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-mid);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .app-shell {
@@ -140,53 +209,192 @@ button {
 
 .sign-in-card input {
   width: 100%;
-  padding: 14px 15px;
-  border: 1px solid #d8d4df;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
   outline: none;
   background: white;
 }
 
 .sign-in-card input:focus {
-  border-color: #6952df;
-  box-shadow: 0 0 0 4px rgb(105 82 223 / 12%);
+  border-color: var(--accent-mid);
+  box-shadow: var(--ring);
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 44px;
-  padding: 0 18px;
+  padding: 0 20px;
   border: 0;
   border-radius: 12px;
   font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition:
+    background var(--motion),
+    border-color var(--motion),
+    box-shadow var(--motion),
+    transform var(--motion);
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .button.primary {
   color: white;
-  background: #5b45d6;
+  background: var(--accent);
   box-shadow: 0 10px 24px rgb(91 69 214 / 22%);
+}
+
+.button.primary:hover:not(:disabled) {
+  background: #5039c9;
+  box-shadow: 0 14px 30px rgb(91 69 214 / 30%);
 }
 
 .button.secondary {
   color: #34303f;
-  border: 1px solid #d8d4df;
-  background: rgb(255 255 255 / 70%);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-muted);
+  box-shadow: var(--shadow-sm);
+}
+
+.button.secondary:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent-strong);
+  background: var(--surface-solid);
 }
 
 .button.danger {
   color: white;
-  background: #b3401b;
+  background: var(--danger);
   box-shadow: 0 10px 24px rgb(179 64 27 / 22%);
 }
 
+.button.danger:hover:not(:disabled) {
+  background: #9c3616;
+  box-shadow: 0 14px 30px rgb(179 64 27 / 30%);
+}
+
 .button:disabled {
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.55;
+}
+
+.button.primary:disabled,
+.button.danger:disabled {
   cursor: wait;
-  opacity: 0.62;
 }
 
 .form-message {
   margin: 4px 0 0;
-  color: #5e6472;
+  color: var(--ink-muted);
   font-size: 0.88rem;
+}
+
+/* Shared field chrome. Individual forms still control their own layout and
+   padding, but border, radius, hover, focus, and placeholder treatment are
+   defined once so every view's controls look like the same product. */
+.sign-in-card input,
+.stacked-form input,
+.stacked-form textarea,
+.stacked-form select,
+.task-form input,
+.task-form select,
+.opportunity-form input,
+.opportunity-form select,
+.entity-edit-form input,
+.entity-edit-form select,
+.document-link-form select,
+.analytics-controls select,
+.status-control select,
+.reopen-control select {
+  color: var(--ink);
+  background-color: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--motion),
+    box-shadow var(--motion);
+}
+
+.sign-in-card input:hover,
+.stacked-form input:hover,
+.stacked-form textarea:hover,
+.stacked-form select:hover,
+.task-form input:hover,
+.task-form select:hover,
+.opportunity-form input:hover,
+.opportunity-form select:hover,
+.entity-edit-form input:hover,
+.entity-edit-form select:hover,
+.document-link-form select:hover,
+.analytics-controls select:hover,
+.status-control select:hover,
+.reopen-control select:hover {
+  border-color: var(--accent-border);
+}
+
+.sign-in-card input:focus,
+.stacked-form input:focus,
+.stacked-form textarea:focus,
+.stacked-form select:focus,
+.task-form input:focus,
+.task-form select:focus,
+.opportunity-form input:focus,
+.opportunity-form select:focus,
+.entity-edit-form input:focus,
+.entity-edit-form select:focus,
+.document-link-form select:focus,
+.analytics-controls select:focus,
+.status-control select:focus,
+.reopen-control select:focus {
+  border-color: var(--accent-mid);
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+/* Native select arrows sit tight against the text on some platforms; drawing
+   our own chevron lets the control keep generous, predictable padding. */
+.stacked-form select,
+.task-form select,
+.opportunity-form select,
+.entity-edit-form select,
+.document-link-form select,
+.analytics-controls select,
+.status-control select,
+.reopen-control select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%235e6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 14px 14px;
+  appearance: none;
+}
+
+.checkbox-field,
+.close-outcome-option,
+.import-review-item,
+.task-checkbox {
+  cursor: pointer;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .centered {
@@ -301,12 +509,23 @@ button {
   height: 46px;
   padding: 0;
   place-items: center;
-  border: 1px solid #d8d4df;
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
   color: #34303f;
-  background: rgb(255 255 255 / 70%);
+  background: var(--surface-muted);
+  box-shadow: var(--shadow-sm);
   font-size: 1.25rem;
   line-height: 1;
+  transition:
+    border-color var(--motion),
+    color var(--motion),
+    background var(--motion);
+}
+
+.profile-menu-trigger:hover {
+  border-color: var(--accent-border);
+  color: var(--accent-strong);
+  background: var(--surface-solid);
 }
 
 .profile-menu-trigger svg {
@@ -341,11 +560,15 @@ button {
 .profile-menu-item {
   padding: 12px 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   color: #34303f;
   background: transparent;
   font-weight: 700;
+  font-size: 0.92rem;
   text-align: left;
+  transition:
+    color var(--motion),
+    background var(--motion);
 }
 
 .profile-menu-item:hover,
@@ -360,79 +583,127 @@ button {
   gap: 6px;
   margin: 28px 0 32px;
   padding: 6px;
-  border-radius: 16px;
-  background: rgb(255 255 255 / 55%);
-  border: 1px solid rgb(42 38 57 / 8%);
+  border-radius: var(--radius-lg);
+  background: rgb(255 255 255 / 62%);
+  border: 1px solid var(--line-faint);
+  box-shadow: var(--shadow-sm);
 }
 
 .tab {
-  padding: 10px 16px;
+  padding: 11px 18px;
   border: 0;
-  border-radius: 11px;
-  color: #5e6472;
+  border-radius: 12px;
+  color: var(--ink-muted);
   background: transparent;
   font-weight: 750;
   font-size: 0.88rem;
+  letter-spacing: 0.005em;
+  transition:
+    color var(--motion),
+    background var(--motion);
 }
 
-.tab.active {
-  color: #4935be;
-  background: #eee9ff;
+.tab:hover {
+  color: var(--ink-strong);
+  background: rgb(255 255 255 / 80%);
+}
+
+.tab.active,
+.tab.active:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
 }
 
 .more-hub {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
   margin-top: 8px;
 }
 
 .more-hub-item {
   display: grid;
   gap: 6px;
-  padding: 20px;
-  border: 1px solid #e2dee7;
-  border-radius: 18px;
+  align-content: start;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   color: inherit;
-  background: rgb(255 255 255 / 70%);
+  background: var(--surface-muted);
   text-align: left;
+  box-shadow: var(--shadow-sm);
   transition:
-    border-color 120ms ease,
-    transform 120ms ease;
+    border-color var(--motion),
+    box-shadow var(--motion),
+    transform var(--motion);
 }
 
 .more-hub-item:hover {
-  border-color: #a99ce9;
-  transform: translateY(-1px);
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .more-hub-item strong {
   font-size: 1.05rem;
+  letter-spacing: -0.01em;
 }
 
 .more-hub-item span {
-  color: #777d89;
+  color: var(--ink-subtle);
   font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 .more-back {
-  margin-bottom: 18px;
-  padding: 8px 14px;
-  border: 1px solid #e2dee7;
-  border-radius: 10px;
-  color: #4935be;
-  background: rgb(255 255 255 / 70%);
+  justify-self: start;
+  margin-bottom: 0;
+  padding: 9px 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--accent-strong);
+  background: var(--surface-muted);
   font-weight: 700;
   font-size: 0.85rem;
+  transition:
+    border-color var(--motion),
+    background var(--motion);
 }
 
 .more-back:hover {
-  border-color: #a99ce9;
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
-.more-detail {
+/* Every tab body shares one vertical rhythm between its heading, forms, and
+   panels rather than relying on per-form bottom margins that drift apart. */
+:is(
+  .more-detail,
+  .account-tab,
+  .activity-tab,
+  .companies-tab,
+  .contacts-tab,
+  .documents-tab,
+  .notes-tab,
+  .profile-imports-tab
+) {
   display: grid;
-  gap: 4px;
+  align-content: start;
+  gap: 20px;
+}
+
+:is(
+  .more-detail,
+  .account-tab,
+  .activity-tab,
+  .companies-tab,
+  .contacts-tab,
+  .documents-tab,
+  .notes-tab,
+  .profile-imports-tab
+)
+  > :is(form, .panel-heading-spaced) {
+  margin-bottom: 0;
 }
 
 .stacked-form,
@@ -459,22 +730,23 @@ button {
 .stacked-form textarea,
 .task-form input {
   min-width: 0;
-  padding: 12px 13px;
-  border: 1px solid #d8d4df;
+  padding: 13px 15px;
+  border: 1px solid var(--line-strong);
   border-radius: 11px;
   background: white;
   font-family: inherit;
 }
 
 /* Selects get extra inline padding (beyond plain text inputs) so their text
-   never crowds the border or the native dropdown arrow. */
+   never crowds the border, plus reserved space on the right for the custom
+   chevron drawn above. */
 .stacked-form select,
 .task-form select {
   min-width: 0;
-  padding: 14px 20px;
-  border: 1px solid #d8d4df;
+  padding: 14px 44px 14px 20px;
+  border: 1px solid var(--line-strong);
   border-radius: 11px;
-  background: white;
+  background-color: white;
   font-family: inherit;
 }
 
@@ -500,11 +772,25 @@ button {
   flex-wrap: wrap;
 }
 
+.status-control {
+  display: grid;
+  gap: 7px;
+  max-width: 340px;
+  margin: 14px 0;
+}
+
+.status-control > span {
+  color: var(--ink-subtle);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
 .status-control select {
-  padding: 14px 20px;
-  border: 1px solid #d8d4df;
-  border-radius: 10px;
-  background: white;
+  padding: 14px 44px 14px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background-color: white;
   font-weight: 700;
 }
 
@@ -620,8 +906,8 @@ button {
 
 .opportunity-form input {
   min-width: 0;
-  padding: 12px 13px;
-  border: 1px solid #d8d4df;
+  padding: 13px 15px;
+  border: 1px solid var(--line-strong);
   border-radius: 11px;
   background: white;
 }
@@ -644,17 +930,21 @@ button {
   gap: 8px;
   min-height: 150px;
   padding: 26px;
-  border-radius: 22px;
+  border-radius: var(--radius-xl);
+  border: 1px solid rgb(255 255 255 / 60%);
+  box-shadow: var(--shadow-sm);
 }
 
 .metric strong {
   font-size: 3rem;
+  line-height: 1;
   letter-spacing: -0.02em;
 }
 
 .metric span {
   align-self: end;
   font-weight: 750;
+  letter-spacing: 0.005em;
 }
 
 .metric.violet {
@@ -679,18 +969,53 @@ button {
 }
 
 .panel {
-  padding: 30px;
+  padding: clamp(24px, 3vw, 32px);
+}
+
+/* Shared "row card" surface used by every list view, so companies, contacts,
+   notes, tasks, documents, activity, agents, and imports all read as the same
+   component family. */
+.task-item,
+.agent-item,
+.entity-item,
+.activity-item,
+.document-item,
+.import-history-item,
+.import-preview,
+.opportunity {
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--motion),
+    box-shadow var(--motion),
+    transform var(--motion);
+}
+
+.task-item:hover,
+.agent-item:hover,
+.entity-item:hover,
+.activity-item:hover,
+.document-item:hover,
+.import-history-item:hover {
+  border-color: #d3cce8;
+  box-shadow: var(--shadow-md);
 }
 
 .panel-heading {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 16px 20px;
   align-items: start;
   justify-content: space-between;
 }
 
+.panel-heading > div:first-child {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .panel-heading-spaced {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .panel h2 {
@@ -701,24 +1026,43 @@ button {
   letter-spacing: -0.015em;
 }
 
+.panel-heading h2 {
+  margin: 0;
+}
+
+.panel-heading > div:first-child > p:not(.eyebrow) {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
 .pill {
-  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
   border-radius: 999px;
-  color: #4935be;
-  background: #eee9ff;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
   font-size: 0.75rem;
   font-weight: 800;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
 .empty-state {
   display: grid;
+  gap: 10px;
   place-items: center;
-  min-height: 280px;
-  margin-top: 28px;
+  align-content: center;
+  min-height: 260px;
+  padding: 32px 24px;
+  margin-top: 24px;
   border: 1px dashed #d5d0dd;
-  border-radius: 20px;
-  color: #777d89;
+  border-radius: var(--radius-xl);
+  color: var(--ink-subtle);
+  background: rgb(255 255 255 / 45%);
   text-align: center;
 }
 
@@ -727,18 +1071,26 @@ button {
   margin: 0;
 }
 
+.empty-state h3 {
+  color: var(--ink-strong);
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
 .empty-state p {
-  max-width: 360px;
+  max-width: 380px;
+  font-size: 0.92rem;
+  line-height: 1.55;
 }
 
 .empty-icon {
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   place-items: center;
-  border-radius: 14px;
-  color: #5b45d6;
-  background: #eee9ff;
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  background: var(--accent-soft);
   font-size: 1.4rem;
 }
 
@@ -753,25 +1105,30 @@ button {
   gap: 20px;
   align-items: center;
   justify-content: space-between;
-  padding: 18px;
-  border: 1px solid #e2dee7;
-  border-radius: 16px;
+  width: 100%;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   color: inherit;
-  background: rgb(255 255 255 / 70%);
+  background: var(--surface-muted);
+  text-align: left;
   text-decoration: none;
-  transition:
-    border-color 120ms ease,
-    transform 120ms ease;
 }
 
 .opportunity:hover {
-  border-color: #a99ce9;
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 
 .opportunity > div:first-child {
   display: grid;
   gap: 5px;
+  min-width: 0;
+}
+
+.opportunity > div:first-child strong {
+  letter-spacing: -0.005em;
 }
 
 .opportunity > div:first-child span,
@@ -797,11 +1154,6 @@ button {
   align-content: start;
 }
 
-.account-tab {
-  display: grid;
-  gap: 18px;
-}
-
 .panel.danger-zone {
   border: 1px solid rgb(179 64 27 / 30%);
   background: rgb(179 64 27 / 4%);
@@ -820,23 +1172,28 @@ button {
   line-height: 1.5;
 }
 
-.profile-imports-tab .panel + .panel {
-  margin-top: 20px;
-}
-
 .file-drop {
   display: grid;
   gap: 8px;
   align-items: center;
   justify-items: start;
   margin: 18px 0;
-  padding: 20px;
+  padding: 22px;
   border: 1px dashed #d5d0dd;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   color: #555b68;
+  background: rgb(255 255 255 / 45%);
   font-size: 0.88rem;
   font-weight: 650;
   cursor: pointer;
+  transition:
+    border-color var(--motion),
+    background var(--motion);
+}
+
+.file-drop:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
 }
 
 .file-drop input {
@@ -1005,8 +1362,8 @@ button {
   background: rgb(255 255 255 / 70%);
 }
 
-.entity-item > div,
-.activity-item > div {
+.entity-item > div:first-child,
+.activity-item > div:first-child {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -1033,19 +1390,19 @@ button {
 
 .entity-edit-form input {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d8d4df;
-  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   background: white;
   font-family: inherit;
 }
 
 .entity-edit-form select {
   width: 100%;
-  padding: 14px 20px;
-  border: 1px solid #d8d4df;
-  border-radius: 10px;
-  background: white;
+  padding: 14px 44px 14px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background-color: white;
   font-family: inherit;
 }
 
@@ -1171,10 +1528,10 @@ button {
 
 .document-link-form select {
   width: 100%;
-  padding: 14px 20px;
-  border: 1px solid #d8d4df;
-  border-radius: 10px;
-  background: white;
+  padding: 14px 44px 14px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background-color: white;
   font-family: inherit;
 }
 
@@ -1198,10 +1555,10 @@ button {
 }
 
 .analytics-controls select {
-  padding: 14px 20px;
-  border: 1px solid #d8d4df;
-  border-radius: 10px;
-  background: white;
+  padding: 14px 44px 14px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background-color: white;
   font-family: inherit;
   font-weight: 700;
 }
@@ -1292,13 +1649,17 @@ button {
 .kanban-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(260px, 1fr);
-  gap: 14px;
+  grid-auto-columns: minmax(214px, 1fr);
+  gap: 12px;
   margin-top: 28px;
-  padding: 20px;
+  padding: 16px;
+  height: auto;
+  transition: height 240ms ease;
   overflow-x: auto;
-  border: 1px solid rgb(42 38 57 / 8%);
-  border-radius: 24px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  border: 1px solid var(--line-faint);
+  border-radius: var(--radius-2xl);
   /* Distinct surface (versus the page background and the white cards inside
      it) so the columns visually read as a board rather than floating rows. */
   background: linear-gradient(160deg, #eef0f8 0%, #e8e2f6 100%);
@@ -1308,55 +1669,86 @@ button {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 200px;
-  padding: 16px;
-  border: 1px solid #e2dee7;
-  border-radius: 18px;
-  background: rgb(255 255 255 / 60%);
+  /* Roomy enough for a column header plus two typical cards, so moving a card
+     between columns doesn't collapse the whole board to the tallest remaining
+     column. Taller content grows the board (animated where supported). */
+  min-height: 300px;
+  padding: 14px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: var(--radius-lg);
+  background: rgb(255 255 255 / 58%);
   transition:
-    border-color 120ms ease,
-    background 120ms ease;
+    border-color var(--motion),
+    background var(--motion),
+    box-shadow var(--motion);
 }
 
 .kanban-column.drag-over {
-  border-color: #a99ce9;
-  background: #f4f1ff;
+  border-color: var(--accent-border);
+  background: #f6f3ff;
+  box-shadow: inset 0 0 0 1px var(--accent-border);
 }
 
 .kanban-column-heading {
   display: flex;
   align-items: center;
+  gap: 10px;
   justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgb(42 38 57 / 8%);
 }
 
 .kanban-column-heading h3 {
   margin: 0;
-  font-size: 0.95rem;
-  letter-spacing: -0.01em;
+  color: var(--ink-strong);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .kanban-column-cards {
   display: grid;
+  align-content: start;
   gap: 10px;
 }
 
 .kanban-column-empty {
   margin: 8px 0;
-  color: #a2a7b3;
+  color: var(--ink-faint);
   font-size: 0.82rem;
 }
 
 .kanban-card {
   display: grid;
   gap: 8px;
-  padding: 14px;
-  border: 1px solid #e2dee7;
-  border-radius: 14px;
-  background: #fff;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  /* The whole card opens the opportunity on a click that ends without a drag
+     (see OpportunityCard), so point rather than grab is the honest cursor. */
+  cursor: pointer;
+  transition:
+    border-color var(--motion),
+    box-shadow var(--motion),
+    transform var(--motion);
+}
+
+.kanban-card:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.kanban-card:active {
+  cursor: grabbing;
 }
 
 .kanban-card-updating {
   opacity: 0.6;
+  cursor: progress;
 }
 
 .kanban-card-open {
@@ -1371,8 +1763,17 @@ button {
   cursor: pointer;
 }
 
+.kanban-card-open strong {
+  font-size: 0.98rem;
+  letter-spacing: -0.005em;
+}
+
+.kanban-card-open:hover strong {
+  color: var(--accent-strong);
+}
+
 .kanban-card-open span {
-  color: #777d89;
+  color: var(--ink-subtle);
   font-size: 0.82rem;
 }
 
@@ -1390,6 +1791,13 @@ button {
   color: #4935be;
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.kanban-column-heading .pill {
+  min-width: 28px;
+  justify-content: center;
+  color: var(--ink-muted);
+  background: rgb(42 38 57 / 7%);
 }
 
 .label-list {
@@ -1480,6 +1888,8 @@ button {
   inset: 0;
   z-index: 40;
   background: rgb(20 15 40 / 45%);
+  backdrop-filter: blur(2px);
+  animation: detail-fade 160ms ease;
 }
 
 .opportunity-detail {
@@ -1493,14 +1903,35 @@ button {
   padding: 32px;
   background: #fff;
   box-shadow: -18px 0 60px rgb(20 15 40 / 18%);
+  animation: detail-slide-in 200ms ease;
+}
+
+@keyframes detail-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes detail-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
 }
 
 .opportunity-detail-heading {
-  margin-bottom: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .detail-section {
-  padding: 18px 0;
+  padding: 20px 0;
   border-top: 1px solid #ece8f2;
 }
 
@@ -1509,16 +1940,45 @@ button {
   border-top: 0;
 }
 
+.detail-section > .eyebrow {
+  margin-bottom: 12px;
+}
+
 .detail-section h2 {
-  margin: 4px 0 8px;
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+  letter-spacing: -0.005em;
+}
+
+.detail-section > p.status {
+  margin: 0;
+}
+
+.detail-section:first-of-type h2 {
+  font-size: clamp(1.5rem, 4vw, 1.9rem);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.detail-section > p:not(.eyebrow, .detail-empty, .status) {
+  margin: 6px 0;
+  color: var(--ink-muted);
+}
+
+.detail-section a {
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-underline-offset: 3px;
 }
 
 .detail-empty {
-  color: #a2a7b3;
+  color: var(--ink-faint);
   font-size: 0.85rem;
 }
 
 .detail-description {
+  color: var(--ink-muted);
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
@@ -1556,6 +2016,11 @@ button {
     grid-auto-flow: row;
     grid-auto-columns: unset;
     grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .kanban-column {
+    min-height: auto;
   }
 
   .opportunity-detail {
@@ -1627,6 +2092,20 @@ button {
   .panel {
     padding: 22px;
     border-radius: 22px;
+  }
+
+  .tab-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+  }
+
+  .status-control {
+    max-width: none;
   }
 
   .opportunity-detail {

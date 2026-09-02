@@ -1,6 +1,6 @@
 import { kanbanStageLabels, kanbanStageCanonicalStatus, kanbanStages, stageForStatus, type KanbanStage } from "@upgradr/domain";
 import { normalizeHttpUrlInput, safeSourceUrlSchema, type ApplicationStatus } from "@upgradr/contracts";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { api, type ApplicationSummary, type TaskSummary } from "./api";
 import { StatusMessage } from "./components/Feedback";
@@ -277,15 +277,43 @@ function OpportunityCard({
   const applicationTasks = tasks.filter((task) => task.application_id === application.id);
   const badges = deriveAttentionBadges(application, applicationTasks);
   const followUp = nextFollowUpTask(application.id, applicationTasks);
+  // A card is both a drag handle and a link into the detail view, so the
+  // press has to be classified on release: a press that ends roughly where it
+  // started, without a drag, opens the opportunity. Anything else is a drag
+  // and must not open anything.
+  const press = useRef({ dragging: false, x: 0, y: 0 });
 
   return (
     <article
       className={`kanban-card${updating ? " kanban-card-updating" : ""}`}
       draggable
       aria-busy={updating}
+      onPointerDown={(event) => {
+        press.current = { dragging: false, x: event.clientX, y: event.clientY };
+      }}
       onDragStart={(event) => {
+        press.current.dragging = true;
         event.dataTransfer.setData("text/plain", application.id);
         event.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnd={() => {
+        press.current.dragging = false;
+      }}
+      onClick={(event) => {
+        if (press.current.dragging) {
+          return;
+        }
+        // The card's own controls (the title button, label removal, ...)
+        // handle their own clicks.
+        if ((event.target as HTMLElement).closest("button")) {
+          return;
+        }
+        const movedX = Math.abs(event.clientX - press.current.x);
+        const movedY = Math.abs(event.clientY - press.current.y);
+        if (movedX > 5 || movedY > 5) {
+          return;
+        }
+        onOpen();
       }}
     >
       <button type="button" className="kanban-card-open" onClick={onOpen}>

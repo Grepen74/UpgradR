@@ -108,6 +108,39 @@ describe("App", () => {
     ).toBeVisible();
   });
 
+  it("opens Account from the profile menu instead of the top-level nav", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: { id: "user-1", email: "person@example.com" } });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+
+    const nav = screen.getByRole("navigation", { name: /workspace sections/i });
+    expect(nav.textContent).not.toMatch(/account/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /account settings menu/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Account" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /delete your account/i })).toBeVisible();
+    });
+    expect(screen.getByRole("heading", { name: /download a copy of your data/i })).toBeVisible();
+  });
+
   it("closes the profile menu with Escape", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;

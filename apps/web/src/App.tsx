@@ -31,8 +31,8 @@ import { ProfileImportsTab } from "./ProfileImportsTab";
 
 // Top-level workspace sections. Overview is the active Kanban board (the
 // default landing content); Summary holds the metrics/recent-opportunities
-// content that used to be called "Overview". Profile, Profile imports, and
-// Preferences are reachable only through the profile menu (see
+// content that used to be called "Overview". Profile, Profile imports,
+// Preferences, and Account are reachable only through the profile menu (see
 // ProfileMenu/profileMenuItems below), and the remaining secondary sections
 // live behind the More hub (see MoreSubTab/moreItems), to keep the top-level
 // nav from getting crowded.
@@ -42,7 +42,6 @@ const dashboardTabs: { id: DashboardTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "summary", label: "Summary" },
   { id: "more", label: "More" },
-  { id: "account", label: "Account" },
 ];
 
 type MoreSubTab =
@@ -68,12 +67,13 @@ const moreItems: { id: MoreSubTab; label: string; description: string }[] = [
   { id: "closed", label: "Closed opportunities", description: "Opportunities you've closed out, with their outcome." },
 ];
 
-type ProfileMenuTab = "profile" | "imports" | "preferences";
+type ProfileMenuTab = "profile" | "imports" | "preferences" | "account";
 
 const profileMenuItems: { id: ProfileMenuTab; label: string }[] = [
   { id: "profile", label: "Profile" },
   { id: "imports", label: "Profile imports" },
   { id: "preferences", label: "Preferences" },
+  { id: "account", label: "Account" },
 ];
 
 
