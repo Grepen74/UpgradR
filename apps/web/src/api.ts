@@ -1,4 +1,4 @@
-import type { ApplicationStatus } from "@upgradr/contracts";
+import type { ApplicationStatus, McpScopeDescriptor } from "@upgradr/contracts";
 import type { DocumentKind, DocumentLinkRole } from "../shared/documents";
 import type {
   LinkedInImportPreviewPayload,
@@ -83,6 +83,8 @@ export type OAuthAuthorization = {
     redirectUri: string;
   };
   scopes?: string[];
+  scopeCatalog?: McpScopeDescriptor[];
+  defaultScopes?: string[];
 };
 
 export type OAuthGrant = {
@@ -606,11 +608,17 @@ export const api = {
     apiRequest<{ tasks: AnalyticsOverdueTask[] }>(
       `/api/analytics/overdue-tasks${toQueryString({ limit: limit?.toString() })}`,
     ),
-  getOAuthGrants: () => apiRequest<{ grants: OAuthGrant[] }>("/api/oauth/grants"),
+  getOAuthGrants: () =>
+    apiRequest<{ grants: OAuthGrant[]; scopeCatalog: McpScopeDescriptor[] }>("/api/oauth/grants"),
   revokeOAuthGrant: (clientId: string) =>
     apiRequest<{ revoked: true }>("/api/oauth/grants/revoke", {
       method: "POST",
       body: JSON.stringify({ clientId }),
+    }),
+  updateOAuthGrantScopes: (clientId: string, scopes: string[]) =>
+    apiRequest<{ scopes: string[] }>("/api/oauth/grants/scopes", {
+      method: "POST",
+      body: JSON.stringify({ clientId, scopes }),
     }),
   sendMagicLink: (email: string, returnTo?: string) =>
     apiRequest<{ sent: true }>("/api/auth/magic-link", {
@@ -621,10 +629,14 @@ export const api = {
     apiRequest<OAuthAuthorization>(
       `/api/oauth/authorization?authorization_id=${encodeURIComponent(authorizationId)}`,
     ),
-  decideOAuthAuthorization: (authorizationId: string, decision: "approve" | "deny") =>
+  decideOAuthAuthorization: (
+    authorizationId: string,
+    decision: "approve" | "deny",
+    scopes?: string[],
+  ) =>
     apiRequest<{ redirectUrl: string }>("/api/oauth/decision", {
       method: "POST",
-      body: JSON.stringify({ authorizationId, decision }),
+      body: JSON.stringify({ authorizationId, decision, scopes }),
     }),
   signOut: () =>
     apiRequest<{ signedOut: true }>("/api/auth/sign-out", {

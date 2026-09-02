@@ -4,15 +4,20 @@
  *
  * Kept as a plain data table (rather than scattering scope checks across
  * tool handlers) so the full authorization surface can be read and tested
- * in one place.
+ * in one place. The scope strings themselves come from `@upgradr/contracts`
+ * so the Worker, the consent screen, and the database check constraint can
+ * never drift apart.
  */
+import type { McpScope as ContractMcpScope } from "@upgradr/contracts";
+
 export const SCOPES = {
   profileRead: "profile:read",
   opportunitiesRead: "opportunities:read",
   applicationsRead: "applications:read",
   applicationsWrite: "applications:write",
   applicationsDelete: "applications:delete",
-} as const;
+} as const satisfies Record<string, ContractMcpScope>;
+
 
 export type McpScope = (typeof SCOPES)[keyof typeof SCOPES];
 

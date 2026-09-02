@@ -13,7 +13,8 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "dev:web": "npm run dev --workspace @upgradr/web",
-    "dev:mcp": "npm run dev --workspace @upgradr/mcp-worker"
+    "dev:mcp": "npm run dev --workspace @upgradr/mcp-worker",
+    "check:mcp-local": "node scripts/mcp-local-e2e.mjs"
   },
   "engines": {
     "node": ">=22"

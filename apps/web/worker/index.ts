@@ -1,4 +1,9 @@
-import { jobSearchPreferencesSchema } from "@upgradr/contracts";
+import {
+  defaultMcpScopes,
+  jobSearchPreferencesSchema,
+  MCP_SCOPE_CATALOG,
+} from "@upgradr/contracts";
+
 import { Hono } from "hono";
 
 import { recordActivityEvent } from "./activity";
@@ -20,6 +25,7 @@ import {
   magicLinkSchema,
   oauthDecisionSchema,
   oauthRevokeSchema,
+  oauthScopeUpdateSchema,
   profileUpdateSchema,
   taskCreateSchema,
   taskUpdateSchema,
@@ -153,6 +159,10 @@ app.get("/api/oauth/authorization", async (context) => {
       redirectUri: data.redirect_uri,
     },
     scopes: data.scope?.split(/\s+/).filter(Boolean) ?? [],
+    // Supabase only ever reports the OIDC scopes it understands. The MCP
+    // permissions the user actually chooses come from this catalogue.
+    scopeCatalog: MCP_SCOPE_CATALOG,
+    defaultScopes: defaultMcpScopes(),
   });
 });
 
@@ -165,6 +175,31 @@ app.post("/api/oauth/decision", async (context) => {
   const parsed = oauthDecisionSchema.safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) {
     return context.json({ error: "Invalid authorization decision" }, 400);
+  }
+
+  if (parsed.data.decision === "approve") {
+    // The granted scopes must be durable before the authorization code can be
+    // exchanged, because app.mcp_access_token_hook() reads them while minting
+    // the token. Recording them after approval would race the exchange.
+    const { data: details } = await auth.supabase.auth.oauth.getAuthorizationDetails(
+      parsed.data.authorizationId,
+    );
+    const clientId = details && "client" in details ? details.client?.id : undefined;
+    if (!clientId) {
+      return context.json({ error: "Unable to complete authorization" }, 400);
+    }
+
+    const { error: grantError } = await auth.supabase.from("mcp_grant_scopes").upsert(
+      {
+        owner_id: auth.userId,
+        client_id: clientId,
+        scopes: parsed.data.scopes ?? defaultMcpScopes(),
+      },
+      { onConflict: "owner_id,client_id" },
+    );
+    if (grantError) {
+      return context.json({ error: "Unable to record the granted permissions" }, 502);
+    }
   }
 
   const action =
@@ -190,14 +225,53 @@ app.get("/api/oauth/grants", async (context) => {
     return context.json({ error: "Unable to load connected agents" }, 502);
   }
 
+  const { data: appGrants } = await auth.supabase
+    .from("mcp_grant_scopes")
+    .select("client_id, scopes");
+  const scopesByClient = new Map(
+    (appGrants ?? []).map((row) => [row.client_id as string, row.scopes as string[]]),
+  );
+
   return context.json({
     grants: data.map((grant) => ({
       clientId: grant.client.id,
       clientName: grant.client.name,
-      scopes: grant.scopes,
+      // The OAuth scopes Supabase stores are always the same OIDC set, so the
+      // meaningful permissions are the app-granted ones.
+      scopes: scopesByClient.get(grant.client.id) ?? [],
       grantedAt: grant.granted_at,
     })),
+    scopeCatalog: MCP_SCOPE_CATALOG,
   });
+});
+
+app.post("/api/oauth/grants/scopes", async (context) => {
+  const auth = await authenticated(context);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const parsed = oauthScopeUpdateSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) {
+    return context.json({ error: "Invalid permissions" }, 400);
+  }
+
+  // Only updates an existing grant: this must not become a way to authorize a
+  // client the user never consented to.
+  const { data, error } = await auth.supabase
+    .from("mcp_grant_scopes")
+    .update({ scopes: parsed.data.scopes })
+    .eq("owner_id", auth.userId)
+    .eq("client_id", parsed.data.clientId)
+    .select("client_id");
+  if (error) {
+    return context.json({ error: "Unable to update agent permissions" }, 502);
+  }
+  if (!data || data.length === 0) {
+    return context.json({ error: "That agent is not connected" }, 404);
+  }
+
+  return context.json({ scopes: parsed.data.scopes });
 });
 
 app.post("/api/oauth/grants/revoke", async (context) => {
@@ -217,6 +291,15 @@ app.post("/api/oauth/grants/revoke", async (context) => {
   if (error) {
     return context.json({ error: "Unable to revoke agent access" }, 502);
   }
+
+  // Clearing the app-side grant is what actually removes the agent's
+  // authority: the next token minted for this client gets an empty `scope`
+  // claim, so the Worker and every RLS policy reject it.
+  await auth.supabase
+    .from("mcp_grant_scopes")
+    .delete()
+    .eq("owner_id", auth.userId)
+    .eq("client_id", parsed.data.clientId);
 
   return context.json({ revoked: true });
 });

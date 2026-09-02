@@ -85,6 +85,14 @@ enable_manual_linking = false
 minimum_password_length = 6
 password_requirements = ""
 
+# MCP scopes cannot ride Supabase's OAuth `scope` parameter (GoTrue rejects any
+# non-OIDC scope), so the user grants them on the app's own consent screen and
+# this hook injects them into the access token. See
+# supabase/migrations/20250115122000_mcp_grant_scopes.sql.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/app/mcp_access_token_hook"
+
 [auth.rate_limit]
 email_sent = 2
 sms_sent = 30

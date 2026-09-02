@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import { isTerminalStatus } from "@upgradr/domain";
 
+
 import {
   api,
   type ApplicationSummary,
   type CandidateProfile,
   type DashboardSummary,
   type JobSearchPreferences,
-  type OAuthAuthorization,
-  type OAuthGrant,
   type SessionUser,
   type TaskSummary,
 } from "./api";
@@ -18,12 +17,14 @@ import { AccountTab } from "./AccountTab";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ClosedOpportunitiesTab } from "./ClosedOpportunitiesTab";
 import { CompaniesTab } from "./CompaniesTab";
+import { ConnectedAgentsTab } from "./ConnectedAgentsTab";
+import { ConsentPage } from "./ConsentPage";
 import { ContactsTab } from "./ContactsTab";
 import { DocumentsTab } from "./DocumentsTab";
 import { KanbanBoard } from "./KanbanBoard";
 import { NotesTab } from "./NotesTab";
 import { OpportunityDetail } from "./OpportunityDetail";
-import { ConfirmButton, StatusMessage } from "./components/Feedback";
+import { StatusMessage } from "./components/Feedback";
 import { useOpportunityRoute } from "./lib/routing";
 import { formatCommaList, parseCommaList } from "./lib/preferences";
 import { isTaskOverdue } from "./lib/tasks";
@@ -223,94 +224,6 @@ export function App() {
         )}
       </main>
     </div>
-  );
-}
-
-function ConsentPage({ authorizationId }: { authorizationId: string }) {
-  const [authorization, setAuthorization] = useState<OAuthAuthorization>();
-  const [message, setMessage] = useState<string>();
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void api
-      .getOAuthAuthorization(authorizationId)
-      .then((value) => {
-        if (value.redirectUrl) {
-          window.location.assign(value.redirectUrl);
-          return;
-        }
-        setAuthorization(value);
-      })
-      .catch((error) => {
-        setMessage(error instanceof Error ? error.message : "Unable to load authorization.");
-      });
-  }, [authorizationId]);
-
-  async function decide(decision: "approve" | "deny") {
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      const result = await api.decideOAuthAuthorization(authorizationId, decision);
-      window.location.assign(result.redirectUrl);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to complete authorization.");
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="consent-layout">
-      <article className="consent-card">
-        <p className="eyebrow">Agent connection</p>
-        <h1>Authorize {authorization?.client?.name ?? "this MCP client"}?</h1>
-        <p className="lede">
-          Review the exact access being requested. You can revoke a connected client from
-          settings later.
-        </p>
-
-        {authorization ? (
-          <>
-            <dl className="consent-details">
-              <div>
-                <dt>Client</dt>
-                <dd>{authorization.client?.name ?? "Unknown client"}</dd>
-              </div>
-              <div>
-                <dt>Redirect</dt>
-                <dd>{authorization.client?.redirectUri ?? "Not provided"}</dd>
-              </div>
-            </dl>
-
-            <div className="scope-list" aria-label="Requested permissions">
-              {(authorization.scopes ?? []).map((scope) => (
-                <span key={scope}>{scope}</span>
-              ))}
-            </div>
-
-            <div className="consent-actions">
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() => void decide("deny")}
-              >
-                Deny
-              </button>
-              <button
-                className="button primary"
-                disabled={busy}
-                onClick={() => void decide("approve")}
-              >
-                Approve access
-              </button>
-            </div>
-          </>
-        ) : message ? (
-          <StatusMessage>{message}</StatusMessage>
-        ) : (
-          <p>Loading authorization request...</p>
-        )}
-      </article>
-    </section>
   );
 }
 
@@ -1014,85 +927,6 @@ function PreferencesTab() {
             </button>
           </div>
         </form>
-      )}
-    </article>
-  );
-}
-
-function ConnectedAgentsTab() {
-  const [grants, setGrants] = useState<OAuthGrant[]>();
-  const [message, setMessage] = useState<string>();
-  const [revokingId, setRevokingId] = useState<string>();
-
-  const refresh = useCallback(async () => {
-    try {
-      const { grants: loaded } = await api.getOAuthGrants();
-      setGrants(loaded);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to load connected agents.");
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  async function revoke(clientId: string) {
-    setRevokingId(clientId);
-    setMessage(undefined);
-    try {
-      await api.revokeOAuthGrant(clientId);
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to revoke agent access.");
-    } finally {
-      setRevokingId(undefined);
-    }
-  }
-
-  return (
-    <article className="panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">Connected agents</p>
-          <h2>Trusted MCP clients with access to your workspace</h2>
-        </div>
-      </div>
-
-      {message ? <StatusMessage>{message}</StatusMessage> : null}
-
-      {grants === undefined ? (
-        <p>Loading connected agents...</p>
-      ) : grants.length === 0 ? (
-        <div className="empty-state">
-          <span className="empty-icon">⌘</span>
-          <h3>No connected agents</h3>
-          <p>When you authorize an MCP client, it will appear here with the access it was granted.</p>
-        </div>
-      ) : (
-        <ul className="agent-list">
-          {grants.map((grant) => (
-            <li className="agent-item" key={grant.clientId}>
-              <div>
-                <strong>{grant.clientName}</strong>
-                <span>Connected {new Date(grant.grantedAt).toLocaleDateString()}</span>
-                <div className="scope-list" aria-label="Granted permissions">
-                  {grant.scopes.map((scope) => (
-                    <span key={scope}>{scope}</span>
-                  ))}
-                </div>
-              </div>
-              <ConfirmButton
-                className="button secondary"
-                disabled={revokingId === grant.clientId}
-                confirmLabel="Confirm revoke access"
-                onConfirm={() => revoke(grant.clientId)}
-              >
-                {revokingId === grant.clientId ? "Revoking..." : "Revoke access"}
-              </ConfirmButton>
-            </li>
-          ))}
-        </ul>
       )}
     </article>
   );

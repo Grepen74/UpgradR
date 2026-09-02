@@ -5,6 +5,7 @@ import {
   analyticsStaleApplicationsQuerySchema,
   applicationStatusSchema,
   candidateProfileSchema,
+  mcpScopeSelectionSchema,
   safeSourceUrlSchema,
 } from "@upgradr/contracts";
 import { z } from "zod";
@@ -50,10 +51,18 @@ export const statusTransitionSchema = z.object({
 export const oauthDecisionSchema = z.object({
   authorizationId: z.string().min(1).max(2_000),
   decision: z.enum(["approve", "deny"]),
+  // Absent on deny, and absent from older clients; the route falls back to the
+  // recommended defaults rather than granting nothing.
+  scopes: mcpScopeSelectionSchema.optional(),
 });
 
 export const oauthRevokeSchema = z.object({
   clientId: z.uuid(),
+});
+
+export const oauthScopeUpdateSchema = z.object({
+  clientId: z.uuid(),
+  scopes: mcpScopeSelectionSchema,
 });
 
 // Reuses the same field-level rules as the shared candidate profile

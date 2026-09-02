@@ -17,7 +17,9 @@ import {
   magicLinkSchema,
   noteCreateSchema,
   noteUpdateSchema,
+  oauthDecisionSchema,
   oauthRevokeSchema,
+  oauthScopeUpdateSchema,
   profileImportConfirmSchema,
   profileUpdateSchema,
   statusTransitionSchema,
@@ -166,6 +168,87 @@ describe("oauthRevokeSchema", () => {
     expect(
       oauthRevokeSchema.safeParse({ clientId: "5b3f3d3a-7f0a-4b8d-9d4a-2f6b6b6b6b6b" }).success,
     ).toBe(true);
+  });
+});
+
+describe("oauthDecisionSchema", () => {
+  it("accepts an approval carrying the user's scope selection", () => {
+    const parsed = oauthDecisionSchema.safeParse({
+      authorizationId: "auth-123",
+      decision: "approve",
+      scopes: ["applications:write", "profile:read"],
+    });
+    expect(parsed.success).toBe(true);
+    // Normalized: the gate scope is added and catalogue order is applied.
+    expect(parsed.success && parsed.data.scopes).toEqual([
+      "mcp",
+      "profile:read",
+      "applications:write",
+    ]);
+  });
+
+  it("leaves scopes absent for a denial", () => {
+    const parsed = oauthDecisionSchema.safeParse({
+      authorizationId: "auth-123",
+      decision: "deny",
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.scopes).toBeUndefined();
+  });
+
+  it("rejects an unknown decision or scope", () => {
+    expect(
+      oauthDecisionSchema.safeParse({ authorizationId: "auth-123", decision: "maybe" }).success,
+    ).toBe(false);
+    expect(
+      oauthDecisionSchema.safeParse({
+        authorizationId: "auth-123",
+        decision: "approve",
+        scopes: ["applications:superuser"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a missing or oversized authorization id", () => {
+    expect(oauthDecisionSchema.safeParse({ decision: "approve" }).success).toBe(false);
+    expect(
+      oauthDecisionSchema.safeParse({ authorizationId: "", decision: "approve" }).success,
+    ).toBe(false);
+    expect(
+      oauthDecisionSchema.safeParse({
+        authorizationId: "a".repeat(2_001),
+        decision: "approve",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("oauthScopeUpdateSchema", () => {
+  it("normalizes the edited selection", () => {
+    const parsed = oauthScopeUpdateSchema.safeParse({
+      clientId: "5b3f3d3a-7f0a-4b8d-9d4a-2f6b6b6b6b6b",
+      scopes: ["applications:delete"],
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.scopes).toEqual(["mcp", "applications:delete"]);
+  });
+
+  // Narrowing an agent to nothing but the gate scope is a legitimate way to
+  // mute it without disconnecting it.
+  it("accepts an empty selection", () => {
+    const parsed = oauthScopeUpdateSchema.safeParse({
+      clientId: "5b3f3d3a-7f0a-4b8d-9d4a-2f6b6b6b6b6b",
+      scopes: [],
+    });
+    expect(parsed.success && parsed.data.scopes).toEqual(["mcp"]);
+  });
+
+  it("requires both a uuid client id and a scope array", () => {
+    expect(oauthScopeUpdateSchema.safeParse({ clientId: "123", scopes: [] }).success).toBe(false);
+    expect(
+      oauthScopeUpdateSchema.safeParse({ clientId: "5b3f3d3a-7f0a-4b8d-9d4a-2f6b6b6b6b6b" })
+        .success,
+    ).toBe(false);
   });
 });
 

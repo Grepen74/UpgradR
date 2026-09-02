@@ -469,6 +469,103 @@ input[type="radio"] {
   font-weight: 800;
 }
 
+.scope-picker {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+  padding: 0;
+  border: 0;
+}
+
+.scope-picker legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted, #6b6b83);
+}
+
+.scope-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #e3e1ee);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.scope-option:hover {
+  border-color: #c9c2ee;
+}
+
+.scope-option input {
+  margin-top: 3px;
+  width: 17px;
+  height: 17px;
+  accent-color: #4935be;
+}
+
+.scope-option input:disabled {
+  cursor: not-allowed;
+}
+
+.scope-option > span {
+  display: grid;
+  gap: 4px;
+}
+
+.scope-option strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.94rem;
+}
+
+.scope-description {
+  color: var(--muted, #6b6b83);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.scope-flag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fdecec;
+  color: #b3261e;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scope-option.sensitive {
+  border-color: #f3d6d4;
+  background: #fffafa;
+}
+
+.scope-picker.compact .scope-option {
+  padding: 10px 12px;
+}
+
+.scope-summary {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.scope-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
 .consent-actions {
   display: flex;
   gap: 12px;
