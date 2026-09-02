@@ -3,7 +3,7 @@ import { safeSourceUrlSchema } from "@upgradr/contracts";
 import { canonicalizeJobUrl, proposalFingerprint } from "@upgradr/domain";
 import { z } from "zod";
 
-import { clampLimit } from "../supabase/query";
+import { clampLimit, clampOffset } from "../supabase/query";
 import { registerScopedTool } from "./scoped-tool";
 import type { ToolContext } from "./types";
 
@@ -21,8 +21,25 @@ const searchOpportunitiesSchema = z
 
 const emptyInputSchema = z.object({});
 
+const knownOpportunityKeysSchema = z.object({
+  updatedSince: z.iso.datetime().optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  offset: z.number().int().min(0).max(10_000).optional(),
+});
+
 const OPPORTUNITY_SELECT =
   "id,title,company_name,location,source_url,current_status,created_at";
+
+const OPPORTUNITY_KEY_SELECT =
+  "id,canonical_source_url,source_provider,external_id,dedup_fingerprint,current_status,updated_at";
+
+const TERMINAL_STATUSES = new Set([
+  "accepted",
+  "rejected",
+  "withdrawn",
+  "dismissed",
+  "archived",
+]);
 
 function escapeIlike(value: string): string {
   return value.replace(/[\\%_*]/g, (char) => `\\${char}`);
@@ -37,6 +54,16 @@ function escapeIlike(value: string): string {
  * source URL (the same key Postgres itself uses for dedup) and/or a
  * fuzzy title/company/location match — so an agent can avoid proposing a
  * job the user is already tracking via `create_job_proposals`.
+ *
+ * `search_existing_opportunities` answers "have I seen this specific job?"
+ * for one candidate at a time. `list_known_opportunity_keys` answers the
+ * same question in bulk: it returns just the de-duplication keys — including
+ * the stored `dedup_fingerprint` generated column added in
+ * `supabase/migrations/20250115121800_proposal_dedup.sql` — so an agent
+ * starting a discovery run can fetch the user's whole known set once and
+ * filter locally. Neither tool is load-bearing on its own: the same rules
+ * are enforced inside `public.create_job_proposals()`, so an agent that
+ * skips both still cannot create a duplicate.
  */
 export function registerOpportunityTools(server: McpServer, ctx: ToolContext): void {
   registerScopedTool(
@@ -115,6 +142,56 @@ export function registerOpportunityTools(server: McpServer, ctx: ToolContext): v
       return {
         content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
         structuredContent: results,
+      };
+    },
+  );
+
+  registerScopedTool(
+    server,
+    ctx,
+    "list_known_opportunity_keys",
+    {
+      title: "List known opportunity keys",
+      description:
+        "Return the de-duplication keys for every opportunity the user already tracks, including closed ones, so an agent can filter its candidates locally before calling create_job_proposals. " +
+        "Each entry carries the canonical source URL, the source provider and its external job id, a normalized company|title|location fingerprint, and the current status. " +
+        "An entry with isClosed true means the user already rejected, withdrew from, dismissed, or archived that opportunity: do not propose it again. " +
+        "Fetch this once per run (paginate with offset, or pass updatedSince to fetch only what changed) rather than searching per candidate.",
+      inputSchema: knownOpportunityKeysSchema,
+    },
+    async ({ updatedSince, limit, offset }, { supabase }) => {
+      // Keys are far smaller than full opportunity rows, so this tool allows
+      // a larger page than the standard MAX_PAGE_SIZE: the whole point is to
+      // replace N per-candidate searches with one bulk fetch.
+      const boundedLimit = clampLimit(limit, 100, 200);
+      const boundedOffset = clampOffset(offset);
+
+      const rows = await supabase.get<Array<Record<string, unknown>>>("applications", {
+        select: OPPORTUNITY_KEY_SELECT,
+        filters: updatedSince ? { updated_at: `gte.${updatedSince}` } : {},
+        order: "updated_at.desc",
+        limit: boundedLimit,
+        offset: boundedOffset,
+      });
+
+      const keys = rows.map((row) => ({
+        id: row["id"],
+        canonicalSourceUrl: row["canonical_source_url"],
+        sourceProvider: row["source_provider"],
+        externalId: row["external_id"],
+        fingerprint: row["dedup_fingerprint"],
+        currentStatus: row["current_status"],
+        isClosed: TERMINAL_STATUSES.has(String(row["current_status"])),
+        updatedAt: row["updated_at"],
+      }));
+
+      // hasMore lets an agent page deterministically without guessing at a
+      // total it does not need.
+      const result = { keys, limit: boundedLimit, offset: boundedOffset, hasMore: rows.length === boundedLimit };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     },
   );

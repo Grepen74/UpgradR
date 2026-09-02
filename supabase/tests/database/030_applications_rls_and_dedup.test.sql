@@ -52,6 +52,7 @@ select throws_ok(
      values ('11111111-1111-1111-1111-111111111111', 'Senior iOS Engineer (dup)', 'Example Inc',
              'https://EXAMPLE.com/jobs/42/?ref=newsletter', 'example.com') $$,
   '23505',
+  null,
   'a second application with the same canonical URL for the same owner is rejected'
 );
 
@@ -96,13 +97,16 @@ select throws_ok(
   $$ update public.applications set current_status = 'applied'
      where owner_id = '22222222-2222-2222-2222-222222222222' $$,
   '42501',
+  null,
   'direct UPDATE of current_status is rejected outside transition_application_status()'
 );
 
 reset role;
 
 select is(
-  (select count(*)::int from public.applications),
+  (select count(*)::int from public.applications
+    where owner_id in ('11111111-1111-1111-1111-111111111111',
+                       '22222222-2222-2222-2222-222222222222')),
   3,
   'as superuser (RLS bypassed), all three application rows exist'
 );

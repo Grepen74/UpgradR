@@ -85,12 +85,14 @@ select set_config(
 select throws_ok(
   $$ select public.confirm_profile_import('aaaaaaa1-0000-0000-0000-000000000001', true, array[0], '{}', array[0]) $$,
   'P0002',
+  null,
   'an MCP-authenticated caller cannot confirm a profile import'
 );
 
 select throws_ok(
   $$ select public.discard_profile_import('aaaaaaa1-0000-0000-0000-000000000002') $$,
   'P0002',
+  null,
   'an MCP-authenticated caller cannot discard a profile import'
 );
 
@@ -114,6 +116,7 @@ select throws_ok(
   $$ update public.profile_imports set status = 'confirmed'
      where id = 'aaaaaaa1-0000-0000-0000-000000000001' $$,
   '42501',
+  null,
   'direct UPDATE of profile_imports.status bypassing the RPCs is rejected'
 );
 
@@ -121,6 +124,7 @@ select throws_ok(
 select throws_ok(
   $$ select public.confirm_profile_import('aaaaaaa1-0000-0000-0000-000000000001', false, array[5], '{}', '{}') $$,
   '22023',
+  null,
   'an out-of-range experience index is rejected'
 );
 
@@ -222,6 +226,7 @@ select is(
 select throws_ok(
   $$ select public.confirm_profile_import('aaaaaaa1-0000-0000-0000-000000000001', true, '{}', '{}', '{}') $$,
   '22023',
+  null,
   'confirming an already-reviewed import is rejected (non-replayable)'
 );
 
@@ -235,6 +240,7 @@ select is(
 select throws_ok(
   $$ select public.confirm_profile_import('aaaaaaa1-0000-0000-0000-000000000003', false, array[0], '{}', '{}') $$,
   '22023',
+  null,
   'a resume import rejects experience/education/skill index selections'
 );
 
@@ -250,12 +256,14 @@ select is(
 select throws_ok(
   $$ select public.discard_profile_import('aaaaaaa1-0000-0000-0000-000000000002') $$,
   '22023',
+  null,
   'discarding an already-discarded import is rejected (non-replayable)'
 );
 
 select throws_ok(
   $$ select public.confirm_profile_import('aaaaaaa1-0000-0000-0000-000000000002', true, '{}', '{}', '{}') $$,
   '22023',
+  null,
   'confirming a discarded import is rejected'
 );
 
@@ -272,6 +280,7 @@ select set_config(
 select throws_ok(
   $$ select public.discard_profile_import('aaaaaaa1-0000-0000-0000-000000000003') $$,
   'P0002',
+  null,
   'a different user cannot discard an import they do not own'
 );
 

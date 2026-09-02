@@ -69,6 +69,7 @@ select throws_ok(
   $$ insert into public.profiles (id, owner_id, email)
      values ('33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333', 'x@example.com') $$,
   '42501',
+  null,
   'direct client insert into profiles is rejected (no insert policy)'
 );
 

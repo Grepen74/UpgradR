@@ -56,6 +56,14 @@ export const jobProposalSchema = z.object({
   strengths: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
   gaps: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
   confidence: z.number().min(0).max(1).optional(),
+  /**
+   * Opt out of the advisory company+title+location duplicate check for this
+   * one proposal. Exact source-URL and provider/external-id duplicates are
+   * always rejected; only the fuzzier fingerprint match can be overridden,
+   * and only when the agent has confirmed these are genuinely distinct
+   * openings.
+   */
+  allowSimilar: z.boolean().optional(),
 });
 
 export const createJobProposalsSchema = z.object({

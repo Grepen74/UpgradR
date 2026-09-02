@@ -46,6 +46,7 @@ select throws_ok(
        'test-mcp-client', 'delete_document', '{}', 'confirmed', now()
      ) $$,
   '42501',
+  null,
   'directly inserting a pre-confirmed operation is rejected'
 );
 
@@ -57,6 +58,7 @@ select throws_ok(
        'test-mcp-client', 'delete_document', '{}', 'expired'
      ) $$,
   '42501',
+  null,
   'directly inserting a pre-expired operation is rejected'
 );
 
@@ -83,6 +85,7 @@ select throws_ok(
          where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
      ) $$,
   'P0002',
+  null,
   'a different user cannot cancel an operation they do not own (RLS hides the row)'
 );
 
@@ -102,6 +105,7 @@ select throws_ok(
   $$ update public.mcp_pending_operations set status = 'confirmed'
      where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' $$,
   '42501',
+  null,
   'the owner directly PATCHing status to confirmed is rejected'
 );
 
@@ -109,6 +113,7 @@ select throws_ok(
   $$ update public.mcp_pending_operations set confirmed_at = now()
      where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' $$,
   '42501',
+  null,
   'the owner directly PATCHing confirmed_at (status left pending) is rejected'
 );
 
@@ -124,6 +129,7 @@ select throws_ok(
   $$ update public.mcp_pending_operations set mcp_client_id = 'test-mcp-client-renamed'
      where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' $$,
   '42501',
+  null,
   'retargeting a still-pending operation is rejected'
 );
 
@@ -157,6 +163,7 @@ select throws_ok(
          where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
      ) $$,
   '22023',
+  null,
   'cancelling an already-resolved operation is rejected'
 );
 
@@ -166,6 +173,7 @@ select throws_ok(
   $$ update public.mcp_pending_operations set status = 'pending'
      where id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' $$,
   '42501',
+  null,
   'a resolved operation can never be updated again, even bypassing RLS'
 );
 
@@ -233,13 +241,15 @@ select is(
 -- Backdate updated_at to simulate age past the retention window. The
 -- resolved-operation lock trigger (and set_updated_at) must be bypassed
 -- deliberately here since this is fixture manipulation, not a real update.
-alter table public.mcp_pending_operations disable trigger all;
+-- USER rather than ALL: the postgres role owns the table but is not a
+-- superuser, so it may not touch the internal RI constraint triggers.
+alter table public.mcp_pending_operations disable trigger user;
 
 update public.mcp_pending_operations
   set updated_at = now() - interval '31 days'
   where id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
-alter table public.mcp_pending_operations enable trigger all;
+alter table public.mcp_pending_operations enable trigger user;
 
 select app.cleanup_expired_mcp_pending_operations();
 

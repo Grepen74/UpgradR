@@ -8,7 +8,7 @@ import { registerOpportunityTools } from "./opportunities";
 import { registerProfileTools } from "./profile";
 import type { ToolContext } from "./types";
 
-/** Registers all 14 goal-oriented MCP tools against a fresh per-request `McpServer`. */
+/** Registers all 15 goal-oriented MCP tools against a fresh per-request `McpServer`. */
 export function registerAllTools(server: McpServer, ctx: ToolContext): void {
   registerProfileTools(server, ctx);
   registerOpportunityTools(server, ctx);

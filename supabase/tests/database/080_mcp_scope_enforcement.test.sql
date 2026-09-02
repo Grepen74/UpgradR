@@ -1,6 +1,6 @@
 begin;
 
-select plan(10);
+select plan(11);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
@@ -117,6 +117,7 @@ select throws_ok(
        'example.com'
      ) $$,
   '42501',
+  null,
   'an MCP read-only token cannot insert an application'
 );
 
@@ -131,6 +132,16 @@ select set_config(
     'scope', 'mcp applications:delete'
   )::text,
   true
+);
+
+-- The destructive-execution escape hatch that lets the RPC below see its
+-- target must not become an ordinary read. It is gated on a transaction-local
+-- GUC that only execute_mcp_pending_operation() ever sets, so outside that
+-- call a delete-scoped token still sees nothing.
+select is(
+  (select count(*)::int from public.applications),
+  0,
+  'a delete-only token cannot read applications outside the destructive RPC'
 );
 
 insert into public.mcp_pending_operations (

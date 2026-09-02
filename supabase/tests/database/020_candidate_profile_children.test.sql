@@ -24,8 +24,23 @@ select is(
   'fixture: both users have a candidate_profiles row'
 );
 
+-- Capture user B's candidate_profile id while RLS is bypassed. Selecting it
+-- inline as user A would return zero rows (A cannot see B's profile), so the
+-- insert below would be a silent no-op and the ownership trigger this test
+-- exists to exercise would never fire.
+create temporary table other_profile as
+select id from public.candidate_profiles
+where owner_id = '22222222-2222-2222-2222-222222222222';
+grant select on other_profile to authenticated;
+
 -- A user cannot attach an experience to someone else's candidate_profile,
 -- even while correctly claiming ownership of the new row.
+--
+-- app.assert_owner_matches_parent() runs as the invoker, so its lookup of the
+-- parent is itself filtered by RLS: user A cannot see user B's profile, so the
+-- guard reports 23503 ("referenced row does not exist") rather than reaching
+-- its 42501 owner-mismatch branch. Both reject the write, and 23503 is the
+-- better answer here because it does not confirm that the id exists at all.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -35,9 +50,10 @@ select set_config(
 
 select throws_ok(
   $$ insert into public.profile_experiences (owner_id, candidate_profile_id, company, title)
-     select '11111111-1111-1111-1111-111111111111', id, 'Acme', 'Engineer'
-     from public.candidate_profiles where owner_id = '22222222-2222-2222-2222-222222222222' $$,
-  '42501',
+     values ('11111111-1111-1111-1111-111111111111',
+             (select id from other_profile), 'Acme', 'Engineer') $$,
+  '23503',
+  null,
   'cannot attach profile_experiences to another user''s candidate_profile'
 );
 
@@ -47,6 +63,7 @@ select throws_ok(
      select '22222222-2222-2222-2222-222222222222', id, 'Acme', 'Engineer'
      from public.candidate_profiles where owner_id = '11111111-1111-1111-1111-111111111111' $$,
   '42501',
+  null,
   'cannot insert profile_experiences claiming another user''s owner_id'
 );
 
@@ -81,7 +98,9 @@ select is(
 reset role;
 
 select is(
-  (select count(*)::int from public.profile_experiences),
+  (select count(*)::int from public.profile_experiences
+    where owner_id in ('11111111-1111-1111-1111-111111111111',
+                       '22222222-2222-2222-2222-222222222222')),
   1,
   'as superuser (RLS bypassed), the single experience row still exists'
 );

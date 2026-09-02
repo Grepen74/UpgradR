@@ -4,10 +4,8 @@ import {
   createJobProposalsSchema,
   type JobProposalInput,
 } from "@upgradr/contracts";
-import { canonicalizeJobUrl } from "@upgradr/domain";
 import { z } from "zod";
 
-import { ToolInputError } from "../http/errors";
 import { clampLimit, clampOffset, eqFilter } from "../supabase/query";
 import { recordActivity } from "./activity";
 import { registerScopedTool } from "./scoped-tool";
@@ -34,14 +32,16 @@ const APPLICATION_SELECT =
   "id,title,company_name,location,source_url,source_provider,current_status,match_score,match_rationale,compensation_min,compensation_max,compensation_currency,created_at,updated_at";
 
 /**
- * Schema per `supabase/migrations/20250115120500_applications.sql` and
- * `20250115120600_application_workflow.sql`: `applications` is a plain
- * owner-scoped REST table (no proposal-creation RPC) whose generated
- * `canonical_source_url` column plus a partial unique index give
- * conservative, exact-match duplicate protection per user — enforced by
- * Postgres itself, not by application code. `current_status`, however, may
- * only change through `public.transition_application_status()`, guarded by
- * an update trigger that rejects any direct column write.
+ * Schema per `supabase/migrations/20250115120500_applications.sql`,
+ * `20250115120600_application_workflow.sql`, and
+ * `20250115121800_proposal_dedup.sql`: `applications` is an owner-scoped
+ * REST table for reads, but the two operations with invariants of their own
+ * go through Postgres functions instead. `current_status` may only change
+ * through `public.transition_application_status()`, guarded by an update
+ * trigger that rejects any direct column write; proposals are created
+ * through `public.create_job_proposals()`, which applies every duplicate
+ * rule inside one transaction so an agent cannot bypass them and a single
+ * duplicate cannot reject an entire batch.
  */
 export function registerApplicationTools(server: McpServer, ctx: ToolContext): void {
   registerScopedTool(
@@ -108,32 +108,22 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
     {
       title: "Create job proposals",
       description:
-        "Propose up to 20 new job opportunities for the user to review. Each proposal must cite a valid HTTP(S) source URL. Call search_existing_opportunities first to avoid proposing a duplicate.",
+        "Propose up to 20 new job opportunities for the user to review. Each proposal must cite a valid HTTP(S) source URL. " +
+        "Duplicates are detected server-side against every opportunity the user owns, including ones they already closed, so no proposal is ever silently duplicated: " +
+        "each item comes back as created, duplicate (same provider job id or same canonical source URL), or possible_duplicate (same company, title and location found at a different URL). " +
+        "Duplicate results include the existing opportunity's id and current status, so a closed match means the user already rejected or dismissed that job — do not propose it again. " +
+        "Set allowSimilar on an item only to override a possible_duplicate you have confirmed is a genuinely different opening. " +
+        "Use list_known_opportunity_keys once per run to filter candidates before calling this tool.",
       inputSchema: createJobProposalsSchema,
     },
     async ({ proposals }, { supabase, auth }) => {
-      // Reject in-batch exact-URL duplicates up front with a clear message.
-      // The database's unique index would otherwise reject the *entire*
-      // bulk insert with an opaque 409 conflict.
-      const seen = new Set<string>();
-      for (const proposal of proposals as JobProposalInput[]) {
-        let canonical: string;
-        try {
-          canonical = canonicalizeJobUrl(proposal.sourceUrl);
-        } catch {
-          throw new ToolInputError(`sourceUrl "${proposal.sourceUrl}" could not be parsed.`);
-        }
-        if (seen.has(canonical)) {
-          throw new ToolInputError(
-            `Batch contains more than one proposal for the same source URL (${proposal.sourceUrl}).`,
-          );
-        }
-        seen.add(canonical);
-      }
-
-      const rows = proposals.map((proposal: JobProposalInput) => ({
-        owner_id: auth.extra.userId,
-        mcp_client_id: auth.clientId,
+      // Every duplicate rule lives in public.create_job_proposals() so it is
+      // enforced by Postgres inside one transaction rather than trusted to
+      // the calling agent: in-batch repeats match rows created earlier in the
+      // same call, and a single duplicate no longer rejects the whole batch
+      // with an opaque 409. See
+      // supabase/migrations/20250115121800_proposal_dedup.sql.
+      const items = (proposals as JobProposalInput[]).map((proposal) => ({
         title: proposal.title,
         company_name: proposal.companyName,
         location: proposal.location ?? null,
@@ -149,28 +139,19 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
         strengths: proposal.strengths,
         gaps: proposal.gaps,
         confidence: proposal.confidence ?? null,
+        allow_similar: proposal.allowSimilar ?? false,
       }));
 
-      // A single bulk insert is atomic: if any row conflicts with an
-      // existing application's canonical_source_url (same user, exact
-      // duplicate), the whole batch is rejected (safe, generic 409
-      // message) rather than partially applied.
-      const created = await supabase.insert<Array<Record<string, unknown>>>("applications", rows);
-
-      await Promise.all(
-        created.map((row) =>
-          recordActivity(supabase, auth, {
-            entityType: "application",
-            entityId: String(row["id"]),
-            eventType: "application.proposed",
-            payload: { title: row["title"], companyName: row["company_name"] },
-          }),
-        ),
-      );
+      // The activity_events rows are written inside the same transaction, so
+      // no separate recordActivity() call is needed here.
+      const outcome = await supabase.rpc<Record<string, unknown>>("create_job_proposals", {
+        p_proposals: items,
+        p_mcp_client_id: auth.clientId,
+      });
 
       return {
-        content: [{ type: "text", text: JSON.stringify(created, null, 2) }],
-        structuredContent: created,
+        content: [{ type: "text", text: JSON.stringify(outcome, null, 2) }],
+        structuredContent: outcome,
       };
     },
   );

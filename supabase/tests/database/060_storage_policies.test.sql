@@ -2,7 +2,7 @@
 -- `documents` and `profile-imports` buckets.
 begin;
 
-select plan(6);
+select plan(8);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password,
@@ -45,6 +45,7 @@ select throws_ok(
   $$ insert into storage.objects (bucket_id, name)
      values ('documents', '22222222-2222-2222-2222-222222222222/resume.pdf') $$,
   '42501',
+  null,
   'user A cannot upload to another user''s owner-prefixed path'
 );
 
@@ -56,7 +57,11 @@ select is(
 
 reset role;
 
--- User B cannot see or delete user A's object.
+-- User B cannot see user A's object, so no policy-filtered statement of theirs
+-- can ever reach it. Storage's own protect_objects_delete() is a
+-- statement-level BEFORE DELETE trigger that rejects direct SQL deletes
+-- outright, so the delete path is asserted through visibility (which is what
+-- the Storage API's DELETE is itself filtered by) plus that guard.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -64,7 +69,18 @@ select set_config(
   true
 );
 
-delete from storage.objects where bucket_id = 'documents';
+select is(
+  (select count(*)::int from storage.objects where bucket_id = 'documents'),
+  0,
+  'user B cannot see user A''s object, so a delete could never match it'
+);
+
+select throws_ok(
+  $$ delete from storage.objects where bucket_id = 'documents' $$,
+  '42501',
+  null,
+  'direct SQL deletes from storage.objects are refused by the storage guard'
+);
 
 reset role;
 

@@ -104,6 +104,7 @@ select throws_ok(
          where id = '40000000-0000-0000-0000-000000000001')
      ) $$,
   '22023',
+  null,
   'replaying an already-executed token is rejected'
 );
 
@@ -191,6 +192,7 @@ select throws_ok(
          where id = '40000000-0000-0000-0000-000000000002')
      ) $$,
   'P0002',
+  null,
   'executing against a row owned by a different user is rejected'
 );
 
@@ -200,11 +202,18 @@ select is(
   'the operation is left pending after the ownership failure (rolled back, not confirmed)'
 );
 
+-- Counted with RLS bypassed: user A is the active role here, so a
+-- policy-filtered count would report 0 whether or not the row survived and
+-- would pass even if the RPC had wrongly deleted user B's application.
+reset role;
+
 select is(
   (select count(*)::int from public.applications where id = '30000000-0000-0000-0000-000000000002'),
   1,
   'user B''s application was not touched'
 );
+
+set local role authenticated;
 
 -- 7. Rollback on a failed (nonexistent) target: nothing is confirmed and no
 -- partial state change is left behind.
@@ -220,6 +229,7 @@ select throws_ok(
          where id = '40000000-0000-0000-0000-000000000003')
      ) $$,
   'P0002',
+  null,
   'executing against a nonexistent target row is rejected'
 );
 
@@ -246,6 +256,7 @@ select throws_ok(
          where id = '4000000b-0000-0000-0000-00000000000b')
      ) $$,
   'P0002',
+  null,
   'a bulk archive with one nonexistent id is rejected entirely'
 );
 
@@ -274,6 +285,7 @@ select throws_ok(
          where id = '40000000-0000-0000-0000-000000000006')
      ) $$,
   '22023',
+  null,
   'an unrecognized operation_type is rejected (fail closed)'
 );
 
@@ -296,6 +308,7 @@ select throws_ok(
          where id = '40000000-0000-0000-0000-000000000007')
      ) $$,
   '22023',
+  null,
   'a target missing its required key is rejected (fail closed)'
 );
 
