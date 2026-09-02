@@ -62,12 +62,17 @@ select is(
 
 select public.transition_application_status('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'rejected', 'No offer extended');
 
--- Terminal status guard: cannot leave a terminal status except to 'archived'.
-select throws_ok(
+-- Terminal status guard: reopening from a terminal status into an active
+-- stage is explicitly allowed (see 20250115121700_reopen_terminal_status.sql).
+select lives_ok(
   $$ select public.transition_application_status('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'interviewing', null) $$,
-  '22023',
-  'cannot transition out of a terminal status back into an active one'
+  'reopening from a terminal status back into an active one is allowed'
 );
+
+-- Re-close the application (terminal -> a different terminal status is
+-- still blocked, so go through 'rejected' again rather than assuming any
+-- terminal is reachable) before exercising the terminal -> archived path.
+select public.transition_application_status('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'rejected', 'Reclosing after reopening');
 
 select lives_ok(
   $$ select public.transition_application_status('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'archived', 'Housekeeping') $$,
@@ -79,6 +84,7 @@ select throws_ok(
   $$ update public.applications set current_status = 'proposed'
      where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' $$,
   '42501',
+  null,
   'direct UPDATE of current_status bypassing the function is rejected'
 );
 
@@ -95,6 +101,7 @@ select set_config(
 select throws_ok(
   $$ select public.transition_application_status('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'saved', null) $$,
   'P0002',
+  null,
   'a different user cannot transition an application they do not own'
 );
 

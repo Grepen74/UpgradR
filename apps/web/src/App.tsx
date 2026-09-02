@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+
+import { isTerminalStatus } from "@upgradr/domain";
 
 import {
   api,
@@ -14,6 +16,7 @@ import {
 import { ActivityTab } from "./ActivityTab";
 import { AccountTab } from "./AccountTab";
 import { AnalyticsTab } from "./AnalyticsTab";
+import { ClosedOpportunitiesTab } from "./ClosedOpportunitiesTab";
 import { CompaniesTab } from "./CompaniesTab";
 import { ContactsTab } from "./ContactsTab";
 import { DocumentsTab } from "./DocumentsTab";
@@ -21,14 +24,28 @@ import { KanbanBoard } from "./KanbanBoard";
 import { NotesTab } from "./NotesTab";
 import { OpportunityDetail } from "./OpportunityDetail";
 import { ConfirmButton, StatusMessage } from "./components/Feedback";
-import { isApplicationsRoute, useOpportunityRoute } from "./lib/routing";
+import { useOpportunityRoute } from "./lib/routing";
 import { formatCommaList, parseCommaList } from "./lib/preferences";
 import { isTaskOverdue } from "./lib/tasks";
 import { ProfileImportsTab } from "./ProfileImportsTab";
 
-type DashboardTab =
-  | "overview"
-  | "applications"
+// Top-level workspace sections. Overview is the active Kanban board (the
+// default landing content); Summary holds the metrics/recent-opportunities
+// content that used to be called "Overview". Profile, Profile imports, and
+// Preferences are reachable only through the profile menu (see
+// ProfileMenu/profileMenuItems below), and the remaining secondary sections
+// live behind the More hub (see MoreSubTab/moreItems), to keep the top-level
+// nav from getting crowded.
+type DashboardTab = "overview" | "summary" | "more" | "account" | "profile" | "imports" | "preferences";
+
+const dashboardTabs: { id: DashboardTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "summary", label: "Summary" },
+  { id: "more", label: "More" },
+  { id: "account", label: "Account" },
+];
+
+type MoreSubTab =
   | "tasks"
   | "companies"
   | "contacts"
@@ -36,28 +53,29 @@ type DashboardTab =
   | "activity"
   | "documents"
   | "analytics"
-  | "profile"
-  | "imports"
-  | "preferences"
   | "agents"
-  | "account";
+  | "closed";
 
-const dashboardTabs: { id: DashboardTab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "applications", label: "Applications" },
-  { id: "tasks", label: "Follow-ups" },
-  { id: "companies", label: "Companies" },
-  { id: "contacts", label: "Contacts" },
-  { id: "notes", label: "Notes" },
-  { id: "activity", label: "Activity" },
-  { id: "documents", label: "Documents" },
-  { id: "analytics", label: "Analytics" },
+const moreItems: { id: MoreSubTab; label: string; description: string }[] = [
+  { id: "tasks", label: "Follow-ups", description: "Tasks and reminders tied to your opportunities." },
+  { id: "companies", label: "Companies", description: "Organizations you're tracking." },
+  { id: "contacts", label: "Contacts", description: "People you're in touch with." },
+  { id: "notes", label: "Notes", description: "Freeform notes linked to opportunities." },
+  { id: "activity", label: "Activity", description: "A timeline of recent workspace activity." },
+  { id: "documents", label: "Documents", description: "Resumes, cover letters, and other files." },
+  { id: "analytics", label: "Analytics", description: "Trends across your pipeline." },
+  { id: "agents", label: "Connected Agents", description: "MCP clients authorized on your account." },
+  { id: "closed", label: "Closed opportunities", description: "Opportunities you've closed out, with their outcome." },
+];
+
+type ProfileMenuTab = "profile" | "imports" | "preferences";
+
+const profileMenuItems: { id: ProfileMenuTab; label: string }[] = [
   { id: "profile", label: "Profile" },
   { id: "imports", label: "Profile imports" },
   { id: "preferences", label: "Preferences" },
-  { id: "agents", label: "Connected agents" },
-  { id: "account", label: "Account" },
 ];
+
 
 const emptyDashboard: DashboardSummary = {
   proposals: 0,
@@ -309,14 +327,57 @@ function Dashboard({
   onRefresh: () => Promise<void>;
   onAccountDeleted: () => void;
 }) {
-  const [tab, setTab] = useState<DashboardTab>(() =>
-    isApplicationsRoute() ? "applications" : "overview",
-  );
+  const [tab, setTab] = useState<DashboardTab>("overview");
+  const [moreSubTab, setMoreSubTab] = useState<MoreSubTab | null>(null);
   const { selectedApplicationId, openApplication, closeApplication } = useOpportunityRoute();
 
+  // A deep link into a closed opportunity's detail should land the user on
+  // the Closed opportunities list (under More), not the active board, since
+  // the active board never shows closed items. This only runs once per
+  // mount, driven by whatever application id was in the URL on load; it
+  // waits for `applications` to arrive before deciding.
+  const initialDeepLinkId = useRef(selectedApplicationId);
+  const deepLinkHandled = useRef(false);
+
+  useEffect(() => {
+    if (deepLinkHandled.current) {
+      return;
+    }
+    const id = initialDeepLinkId.current;
+    if (!id) {
+      deepLinkHandled.current = true;
+      return;
+    }
+    const application = applications.find((entry) => entry.id === id);
+    if (!application) {
+      return;
+    }
+    deepLinkHandled.current = true;
+    if (isTerminalStatus(application.current_status)) {
+      setTab("more");
+      setMoreSubTab("closed");
+    }
+  }, [applications]);
+
+  const activeApplications = applications.filter(
+    (application) => !isTerminalStatus(application.current_status),
+  );
+  const closedApplications = applications.filter((application) =>
+    isTerminalStatus(application.current_status),
+  );
+
   function openOpportunity(applicationId: string) {
-    setTab("applications");
     openApplication(applicationId);
+  }
+
+  function selectTopLevelTab(id: DashboardTab) {
+    setTab(id);
+    if (id === "more") {
+      // Re-entering More via the top nav always returns to the hub; a
+      // selected item's own "Back to More" control is the way back from a
+      // sub-tab, so the two controls stay predictable and don't fight.
+      setMoreSubTab(null);
+    }
   }
 
   return (
@@ -327,6 +388,7 @@ function Dashboard({
           <h1>Keep momentum visible.</h1>
           <p>{user.email ?? "Signed-in account"}</p>
         </div>
+        <ProfileMenu activeTab={tab} onSelect={(id) => setTab(id)} />
       </div>
 
       <nav className="tab-bar" aria-label="Workspace sections">
@@ -335,7 +397,7 @@ function Dashboard({
             key={entry.id}
             className={`tab${tab === entry.id ? " active" : ""}`}
             aria-current={tab === entry.id ? "page" : undefined}
-            onClick={() => setTab(entry.id)}
+            onClick={() => selectTopLevelTab(entry.id)}
           >
             {entry.label}
           </button>
@@ -343,26 +405,46 @@ function Dashboard({
       </nav>
 
       {tab === "overview" ? (
-        <OverviewTab dashboard={dashboard} applications={applications} />
-      ) : null}
-      {tab === "applications" ? (
         <KanbanBoard
-          applications={applications}
+          applications={activeApplications}
+          closedCount={closedApplications.length}
           onRefresh={onRefresh}
           onOpenApplication={openOpportunity}
+          onOpenClosed={() => {
+            setTab("more");
+            setMoreSubTab("closed");
+          }}
         />
       ) : null}
-      {tab === "tasks" ? <TasksTab applications={applications} /> : null}
-      {tab === "companies" ? <CompaniesTab /> : null}
-      {tab === "contacts" ? <ContactsTab /> : null}
-      {tab === "notes" ? <NotesTab applications={applications} /> : null}
-      {tab === "activity" ? <ActivityTab /> : null}
-      {tab === "documents" ? <DocumentsTab applications={applications} /> : null}
-      {tab === "analytics" ? <AnalyticsTab /> : null}
+      {tab === "summary" ? <SummaryTab dashboard={dashboard} applications={applications} /> : null}
+      {tab === "more" ? (
+        moreSubTab === null ? (
+          <MoreHub onSelect={setMoreSubTab} />
+        ) : (
+          <div className="more-detail">
+            <button className="more-back" onClick={() => setMoreSubTab(null)}>
+              ← Back to More
+            </button>
+            {moreSubTab === "tasks" ? <TasksTab applications={applications} /> : null}
+            {moreSubTab === "companies" ? <CompaniesTab /> : null}
+            {moreSubTab === "contacts" ? <ContactsTab /> : null}
+            {moreSubTab === "notes" ? <NotesTab applications={applications} /> : null}
+            {moreSubTab === "activity" ? <ActivityTab /> : null}
+            {moreSubTab === "documents" ? <DocumentsTab applications={applications} /> : null}
+            {moreSubTab === "analytics" ? <AnalyticsTab /> : null}
+            {moreSubTab === "agents" ? <ConnectedAgentsTab /> : null}
+            {moreSubTab === "closed" ? (
+              <ClosedOpportunitiesTab
+                applications={closedApplications}
+                onOpenApplication={openOpportunity}
+              />
+            ) : null}
+          </div>
+        )
+      ) : null}
       {tab === "profile" ? <ProfileTab /> : null}
       {tab === "imports" ? <ProfileImportsTab /> : null}
       {tab === "preferences" ? <PreferencesTab /> : null}
-      {tab === "agents" ? <ConnectedAgentsTab /> : null}
       {tab === "account" ? <AccountTab onAccountDeleted={onAccountDeleted} /> : null}
 
       {selectedApplicationId ? (
@@ -376,7 +458,90 @@ function Dashboard({
   );
 }
 
-function OverviewTab({
+function ProfileMenu({
+  activeTab,
+  onSelect,
+}: {
+  activeTab: DashboardTab;
+  onSelect: (id: ProfileMenuTab) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function onDocumentEvent(event: MouseEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+        return;
+      }
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocumentEvent);
+    document.addEventListener("keydown", onDocumentEvent);
+    return () => {
+      document.removeEventListener("mousedown", onDocumentEvent);
+      document.removeEventListener("keydown", onDocumentEvent);
+    };
+  }, [open]);
+
+  return (
+    <div className="profile-menu" ref={containerRef}>
+      <button
+        type="button"
+        className={`profile-menu-trigger${open ? " active" : ""}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account settings menu"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="profile-menu-list" role="menu" aria-label="Account settings">
+          {profileMenuItems.map((entry) => (
+            <button
+              key={entry.id}
+              role="menuitem"
+              className={`profile-menu-item${activeTab === entry.id ? " active" : ""}`}
+              onClick={() => {
+                onSelect(entry.id);
+                setOpen(false);
+              }}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MoreHub({ onSelect }: { onSelect: (id: MoreSubTab) => void }) {
+  return (
+    <div className="more-hub" aria-label="More workspace sections">
+      {moreItems.map((entry) => (
+        <button className="more-hub-item" key={entry.id} onClick={() => onSelect(entry.id)}>
+          <strong>{entry.label}</strong>
+          <span>{entry.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+
+function SummaryTab({
   dashboard,
   applications,
 }: {

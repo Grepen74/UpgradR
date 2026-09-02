@@ -10,42 +10,38 @@ import {
 } from "./applications";
 
 describe("availableNextStatuses", () => {
-  it("offers every other status from a non-terminal status", () => {
+  it("offers every other active status from a non-terminal status", () => {
     const next = availableNextStatuses("applied");
     expect(next).not.toContain("applied");
     expect(next).toContain("interviewing");
-    expect(next).toContain("archived");
   });
 
-  it("only offers archived from a terminal status", () => {
-    expect(availableNextStatuses("rejected")).toEqual(["archived"]);
-    expect(availableNextStatuses("accepted")).toEqual(["archived"]);
+  it("excludes closing outcomes -- closing has its own explicit control", () => {
+    const next = availableNextStatuses("applied");
+    expect(next).not.toContain("accepted");
+    expect(next).not.toContain("rejected");
+    expect(next).not.toContain("withdrawn");
+    expect(next).not.toContain("dismissed");
+    expect(next).not.toContain("archived");
   });
 
-  it("offers nothing further once archived", () => {
+  it("offers nothing from a terminal status -- reopening has its own explicit control", () => {
+    expect(availableNextStatuses("rejected")).toEqual([]);
+    expect(availableNextStatuses("accepted")).toEqual([]);
     expect(availableNextStatuses("archived")).toEqual([]);
   });
 });
 
 describe("groupStatusesByStage", () => {
-  it("groups statuses by Kanban column in board order", () => {
-    const groups = groupStatusesByStage(availableNextStatuses("applied"));
+  it("groups statuses by Kanban column in board order, excluding the closed column", () => {
+    const groups = groupStatusesByStage(availableNextStatuses("proposed"));
     expect(groups.map((group) => group.stage)).toEqual([
       "inbox",
       "shortlist",
       "applied",
       "interviewing",
       "offer",
-      "closed",
     ]);
-  });
-
-  it("puts every closed outcome status under a single Closed group", () => {
-    const groups = groupStatusesByStage(availableNextStatuses("interviewing"));
-    const closed = groups.find((group) => group.stage === "closed");
-    expect(closed?.statuses).toEqual(
-      expect.arrayContaining(["accepted", "rejected", "withdrawn", "dismissed", "archived"]),
-    );
   });
 
   it("omits empty groups", () => {

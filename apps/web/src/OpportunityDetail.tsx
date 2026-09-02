@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import type { ApplicationStatus } from "@upgradr/contracts";
+import {
+  isTerminalStatus,
+  kanbanClosedOutcomeStatuses,
+  kanbanStageCanonicalStatus,
+  kanbanStageLabels,
+  kanbanStages,
+} from "@upgradr/domain";
 
 import {
   api,
@@ -15,10 +22,16 @@ import {
   type NoteSummary,
   type TaskSummary,
 } from "./api";
-import { StatusMessage } from "./components/Feedback";
+import { ConfirmButton, StatusMessage } from "./components/Feedback";
 import { availableNextStatuses, groupStatusesByStage } from "./lib/applications";
 import { describeActivityEvent } from "./lib/activity";
 import { isTaskOverdue } from "./lib/tasks";
+
+// The stages a closed opportunity can be reopened into, in board order --
+// mirrors the requirement that reopening offers Inbox=saved,
+// Shortlist=shortlisted, Applied=applied, Interviewing=interviewing,
+// Offer=offer.
+const REOPEN_STAGES = kanbanStages.filter((stage) => stage !== "closed");
 
 type DetailState = {
   application: ApplicationDetailRecord;
@@ -327,6 +340,12 @@ export function OpportunityDetail({
               onChangeStatus={(status) => void changeStatus(status)}
             />
 
+            {isTerminalStatus(detail.application.current_status) ? (
+              <ReopenSection busy={busy} onReopen={(status) => void changeStatus(status)} />
+            ) : (
+              <CloseSection busy={busy} onClose={(status) => void changeStatus(status)} />
+            )}
+
             <MatchSection application={detail.application} matchAssessments={detail.matchAssessments} />
 
             <LabelSection
@@ -463,6 +482,125 @@ function StatusSection({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * Explicit close control for an active opportunity: a specific outcome
+ * (Accepted/Rejected/Withdrawn/Dismissed/Archived) must be chosen, then
+ * confirmed, before the opportunity is closed -- deliberately separate from
+ * the generic "Move to..." control above so closing never happens as a side
+ * effect of an ordinary stage move. Once closed, the application's own
+ * updated_at/current_status change is picked up by the caller's onChanged
+ * refresh, so the item disappears from the active board.
+ */
+function CloseSection({
+  busy,
+  onClose,
+}: {
+  busy: boolean;
+  onClose: (status: ApplicationStatus) => void;
+}) {
+  const [outcome, setOutcome] = useState<ApplicationStatus | "">("");
+
+  return (
+    <section className="detail-section">
+      <p className="eyebrow">Close this opportunity</p>
+      <p className="detail-empty">
+        Choose the outcome. This moves the opportunity out of the active board and into Closed
+        opportunities (see More).
+      </p>
+
+      <fieldset className="close-outcome-fieldset" disabled={busy}>
+        <legend className="sr-only">Closing outcome</legend>
+        {kanbanClosedOutcomeStatuses.map((status) => (
+          <label className="close-outcome-option" key={status}>
+            <input
+              type="radio"
+              name="closeOutcome"
+              value={status}
+              checked={outcome === status}
+              onChange={() => setOutcome(status)}
+            />
+            <span>{status}</span>
+          </label>
+        ))}
+      </fieldset>
+
+      <ConfirmButton
+        type="button"
+        className="button danger"
+        disabled={busy || !outcome}
+        confirmLabel={outcome ? `Confirm close as ${outcome}` : "Confirm close"}
+        onConfirm={() => {
+          if (outcome) {
+            onClose(outcome);
+            setOutcome("");
+          }
+        }}
+      >
+        Close opportunity
+      </ConfirmButton>
+    </section>
+  );
+}
+
+/**
+ * Reopen control for a closed opportunity: lets the user pick which active
+ * Kanban stage to move it back into (Inbox=saved, Shortlist=shortlisted,
+ * Applied=applied, Interviewing=interviewing, Offer=offer), rather than
+ * silently resuming wherever it left off. This is the only UI path back
+ * from a terminal status -- see the transition_application_status() guard
+ * in supabase/migrations, which permits terminal -> active transitions only
+ * through this RPC.
+ */
+function ReopenSection({
+  busy,
+  onReopen,
+}: {
+  busy: boolean;
+  onReopen: (status: ApplicationStatus) => void;
+}) {
+  const [target, setTarget] = useState<ApplicationStatus | "">("");
+
+  return (
+    <section className="detail-section">
+      <p className="eyebrow">Reopen this opportunity</p>
+      <p className="detail-empty">Choose which active stage to move this back into.</p>
+
+      <label className="status-control">
+        <span>Move back to...</span>
+        <select
+          aria-label="Reopen into an active stage"
+          disabled={busy}
+          value={target}
+          onChange={(event) => setTarget(event.target.value as ApplicationStatus)}
+        >
+          <option value="" disabled>
+            Choose a stage...
+          </option>
+          {REOPEN_STAGES.map((stage) => (
+            <option key={stage} value={kanbanStageCanonicalStatus[stage]}>
+              {kanbanStageLabels[stage]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <button
+        type="button"
+        className="button primary"
+        disabled={busy || !target}
+        onClick={() => {
+          if (target) {
+            onReopen(target);
+            setTarget("");
+          }
+        }}
+      >
+        Reopen opportunity
+      </button>
     </section>
   );
 }

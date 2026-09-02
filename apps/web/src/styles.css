@@ -83,7 +83,7 @@ button {
   color: #171a22;
   font-size: clamp(3rem, 7vw, 6.6rem);
   line-height: 0.96;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.015em;
 }
 
 .lede {
@@ -130,7 +130,7 @@ button {
 .sign-in-card h2 {
   margin: 0 0 18px;
   font-size: 2rem;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.015em;
 }
 
 .sign-in-card label {
@@ -218,7 +218,7 @@ button {
   margin: 10px 0 18px;
   font-size: clamp(2.2rem, 6vw, 4.2rem);
   line-height: 1;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.015em;
 }
 
 .consent-details {
@@ -290,6 +290,70 @@ button {
   color: #777d89;
 }
 
+.profile-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-menu-trigger {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #d8d4df;
+  border-radius: 999px;
+  color: #34303f;
+  background: rgb(255 255 255 / 70%);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.profile-menu-trigger svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+}
+
+.profile-menu-trigger.active {
+  border-color: #6952df;
+  color: #4935be;
+  background: #eee9ff;
+}
+
+.profile-menu-list {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 2px;
+  min-width: 200px;
+  padding: 8px;
+  border: 1px solid rgb(42 38 57 / 8%);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgb(45 39 72 / 18%);
+}
+
+.profile-menu-item {
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #34303f;
+  background: transparent;
+  font-weight: 700;
+  text-align: left;
+}
+
+.profile-menu-item:hover,
+.profile-menu-item.active {
+  color: #4935be;
+  background: #eee9ff;
+}
+
 .tab-bar {
   display: flex;
   flex-wrap: wrap;
@@ -316,6 +380,61 @@ button {
   background: #eee9ff;
 }
 
+.more-hub {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.more-hub-item {
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid #e2dee7;
+  border-radius: 18px;
+  color: inherit;
+  background: rgb(255 255 255 / 70%);
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.more-hub-item:hover {
+  border-color: #a99ce9;
+  transform: translateY(-1px);
+}
+
+.more-hub-item strong {
+  font-size: 1.05rem;
+}
+
+.more-hub-item span {
+  color: #777d89;
+  font-size: 0.85rem;
+}
+
+.more-back {
+  margin-bottom: 18px;
+  padding: 8px 14px;
+  border: 1px solid #e2dee7;
+  border-radius: 10px;
+  color: #4935be;
+  background: rgb(255 255 255 / 70%);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.more-back:hover {
+  border-color: #a99ce9;
+}
+
+.more-detail {
+  display: grid;
+  gap: 4px;
+}
+
 .stacked-form,
 .task-form {
   display: grid;
@@ -337,12 +456,22 @@ button {
 }
 
 .stacked-form input,
-.stacked-form select,
 .stacked-form textarea,
-.task-form input,
-.task-form select {
+.task-form input {
   min-width: 0;
   padding: 12px 13px;
+  border: 1px solid #d8d4df;
+  border-radius: 11px;
+  background: white;
+  font-family: inherit;
+}
+
+/* Selects get extra inline padding (beyond plain text inputs) so their text
+   never crowds the border or the native dropdown arrow. */
+.stacked-form select,
+.task-form select {
+  min-width: 0;
+  padding: 14px 20px;
   border: 1px solid #d8d4df;
   border-radius: 11px;
   background: white;
@@ -363,12 +492,16 @@ button {
   background: #fce8cd;
 }
 
+.pill-capitalize {
+  text-transform: capitalize;
+}
+
 .opportunity-row {
   flex-wrap: wrap;
 }
 
 .status-control select {
-  padding: 10px 12px;
+  padding: 14px 20px;
   border: 1px solid #d8d4df;
   border-radius: 10px;
   background: white;
@@ -516,7 +649,7 @@ button {
 
 .metric strong {
   font-size: 3rem;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.02em;
 }
 
 .metric span {
@@ -565,7 +698,7 @@ button {
   margin: 8px 0 0;
   font-size: clamp(1.5rem, 3vw, 2.2rem);
   line-height: 1.15;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.015em;
 }
 
 .pill {
@@ -898,10 +1031,18 @@ button {
   width: 100%;
 }
 
-.entity-edit-form input,
-.entity-edit-form select {
+.entity-edit-form input {
   width: 100%;
   padding: 10px 12px;
+  border: 1px solid #d8d4df;
+  border-radius: 10px;
+  background: white;
+  font-family: inherit;
+}
+
+.entity-edit-form select {
+  width: 100%;
+  padding: 14px 20px;
   border: 1px solid #d8d4df;
   border-radius: 10px;
   background: white;
@@ -1030,11 +1171,23 @@ button {
 
 .document-link-form select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 14px 20px;
   border: 1px solid #d8d4df;
   border-radius: 10px;
   background: white;
   font-family: inherit;
+}
+
+.analytics-tab {
+  display: grid;
+  /* Extra vertical breathing room between each white panel/box section
+     (metric grid, funnel/pipeline, trend/sources, time-in-stage, weekly
+     review) beyond each panel's own internal padding. */
+  gap: 36px;
+}
+
+.analytics-tab .metric-grid {
+  margin: 0;
 }
 
 .analytics-controls {
@@ -1045,7 +1198,7 @@ button {
 }
 
 .analytics-controls select {
-  padding: 9px 12px;
+  padding: 14px 20px;
   border: 1px solid #d8d4df;
   border-radius: 10px;
   background: white;
@@ -1142,8 +1295,13 @@ button {
   grid-auto-columns: minmax(260px, 1fr);
   gap: 14px;
   margin-top: 28px;
-  padding-bottom: 8px;
+  padding: 20px;
   overflow-x: auto;
+  border: 1px solid rgb(42 38 57 / 8%);
+  border-radius: 24px;
+  /* Distinct surface (versus the page background and the white cards inside
+     it) so the columns visually read as a board rather than floating rows. */
+  background: linear-gradient(160deg, #eef0f8 0%, #e8e2f6 100%);
 }
 
 .kanban-column {
@@ -1195,6 +1353,10 @@ button {
   border: 1px solid #e2dee7;
   border-radius: 14px;
   background: #fff;
+}
+
+.kanban-card-updating {
+  opacity: 0.6;
 }
 
 .kanban-card-open {
@@ -1288,6 +1450,29 @@ button {
 .badge-stale {
   color: #55606e;
   background: #eef1f4;
+}
+
+.close-outcome-fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+}
+
+.close-outcome-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.close-outcome-option span {
+  text-transform: capitalize;
+}
+
+.reopen-control {
+  margin: 12px 0;
 }
 
 .opportunity-detail-backdrop {

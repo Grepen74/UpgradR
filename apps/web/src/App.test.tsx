@@ -26,7 +26,7 @@ describe("App", () => {
     expect(screen.getByLabelText(/email address/i)).toBeVisible();
   });
 
-  it("lets a signed-in user switch to the profile tab and load their headline", async () => {
+  it("lets a signed-in user open the profile menu and switch to the profile tab", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
 
@@ -58,7 +58,8 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+    fireEvent.click(screen.getByRole("button", { name: /account settings menu/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Profile" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText(/headline/i)).toHaveValue("Senior iOS Engineer");
@@ -71,7 +72,7 @@ describe("App", () => {
     ).toBeVisible();
   });
 
-  it("lets a signed-in user switch to the profile imports tab and see empty history", async () => {
+  it("lets a signed-in user open the profile menu and switch to profile imports", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
 
@@ -96,7 +97,8 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Profile imports" }));
+    fireEvent.click(screen.getByRole("button", { name: /account settings menu/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Profile imports" }));
 
     await waitFor(() => {
       expect(screen.getByText(/no imports yet/i)).toBeVisible();
@@ -104,6 +106,167 @@ describe("App", () => {
     expect(
       screen.getByText(/upload a linkedin export or resume above to start a reviewable import/i),
     ).toBeVisible();
+  });
+
+  it("closes the profile menu with Escape", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: { id: "user-1", email: "person@example.com" } });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /account settings menu/i }));
+    expect(screen.getByRole("menu", { name: /account settings/i })).toBeVisible();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: /account settings/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows the active Kanban board as the default Overview landing content", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: { id: "user-1", email: "person@example.com" } });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+
+    expect(screen.getByRole("button", { name: "Overview" })).toHaveClass("active");
+    expect(
+      screen.getByRole("heading", { name: "Every opportunity, one place to move it forward" }),
+    ).toBeVisible();
+  });
+
+  it("moves the metrics/recent-opportunities content that used to be Overview into Summary", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: { id: "user-1", email: "person@example.com" } });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 2, active: 1, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+
+    expect(screen.queryByLabelText("Job search overview")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Summary" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Job search overview")).toBeVisible();
+    });
+    expect(screen.getByText("Agent proposals")).toBeVisible();
+  });
+
+  it("excludes closed opportunities from the active board and lists them under More", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: { id: "user-1", email: "person@example.com" } });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({
+          applications: [
+            {
+              id: "app-active",
+              title: "Active Role",
+              company_name: "Acme",
+              location: null,
+              source_url: "https://acme.example/jobs/1",
+              source_provider: "acme.example",
+              current_status: "saved",
+              match_score: null,
+              confidence: null,
+              mcp_client_id: null,
+              created_at: "2024-01-01T00:00:00.000Z",
+              updated_at: "2024-01-01T00:00:00.000Z",
+              labels: [],
+            },
+            {
+              id: "app-closed",
+              title: "Closed Role",
+              company_name: "Globex",
+              location: null,
+              source_url: "https://globex.example/jobs/1",
+              source_provider: "globex.example",
+              current_status: "rejected",
+              match_score: null,
+              confidence: null,
+              mcp_client_id: null,
+              created_at: "2024-01-01T00:00:00.000Z",
+              updated_at: "2024-01-01T00:00:00.000Z",
+              labels: [],
+            },
+          ],
+        });
+      }
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Active Role")).toBeVisible();
+    });
+    expect(screen.queryByText("Closed Role")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("button", { name: /closed opportunities/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Closed Role")).toBeVisible();
+    });
+    expect(screen.queryByText("Active Role")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "← Back to More" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Follow-ups/ })).toBeVisible();
+    });
   });
 
   it("normalizes a browser-style job posting URL before saving an opportunity", async () => {
@@ -133,7 +296,6 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Applications" }));
     fireEvent.click(screen.getByRole("button", { name: "Add opportunity" }));
     fireEvent.change(screen.getByLabelText("Role"), { target: { value: "Senior Engineer" } });
     fireEvent.change(screen.getByLabelText("Company"), { target: { value: "Example" } });

@@ -40,7 +40,7 @@ describe("KanbanBoard", () => {
     vi.restoreAllMocks();
   });
 
-  it("groups opportunities into their Kanban column by detailed status", async () => {
+  it("groups opportunities into their Kanban column by detailed status, and never shows a Closed column", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = requestUrl(input);
       if (url.includes("/api/tasks")) {
@@ -52,7 +52,6 @@ describe("KanbanBoard", () => {
     const applications = [
       makeApplication({ id: "app-1", title: "Inbox Role", current_status: "saved" }),
       makeApplication({ id: "app-2", title: "Offer Role", current_status: "offer" }),
-      makeApplication({ id: "app-3", title: "Closed Role", current_status: "rejected" }),
     ];
 
     render(
@@ -65,11 +64,79 @@ describe("KanbanBoard", () => {
     const offerColumn = screen.getByRole("region", { name: /offer/i });
     expect(within(offerColumn).getByText("Offer Role")).toBeVisible();
 
-    const closedColumn = screen.getByRole("region", { name: /closed/i });
-    expect(within(closedColumn).getByText("Closed Role")).toBeVisible();
+    expect(screen.queryByRole("region", { name: /closed/i })).not.toBeInTheDocument();
   });
 
-  it("moves a card to a new status using the accessible select control", async () => {
+  it("excludes closed opportunities even if one is passed in by the caller", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    const applications = [
+      makeApplication({ id: "app-1", title: "Inbox Role", current_status: "saved" }),
+      makeApplication({ id: "app-2", title: "Rejected Role", current_status: "rejected" }),
+    ];
+
+    render(
+      <KanbanBoard applications={applications} onRefresh={vi.fn()} onOpenApplication={vi.fn()} />,
+    );
+
+    await screen.findByText("Inbox Role");
+    expect(screen.queryByText("Rejected Role")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /closed/i })).not.toBeInTheDocument();
+  });
+
+  it("points to Closed opportunities when there are no active cards", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+    const onOpenClosed = vi.fn();
+
+    render(
+      <KanbanBoard
+        applications={[]}
+        closedCount={2}
+        onRefresh={vi.fn()}
+        onOpenApplication={vi.fn()}
+        onOpenClosed={onOpenClosed}
+      />,
+    );
+
+    expect(await screen.findByText("No active opportunities")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "View closed opportunities" }));
+    expect(onOpenClosed).toHaveBeenCalledOnce();
+  });
+
+  it("does not render a 'Move to...' select on a collapsed card", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(
+      <KanbanBoard
+        applications={[makeApplication()]}
+        onRefresh={vi.fn()}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Senior Engineer");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("moves a card to a new status by dropping it onto a different column", async () => {
     const requests: { url: string; body: string }[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = requestUrl(input);
@@ -90,8 +157,10 @@ describe("KanbanBoard", () => {
       <KanbanBoard applications={applications} onRefresh={onRefresh} onOpenApplication={vi.fn()} />,
     );
 
-    const select = await screen.findByLabelText("Update status for Senior Engineer");
-    fireEvent.change(select, { target: { value: "shortlisted" } });
+    await screen.findByText("Senior Engineer");
+    fireEvent.drop(screen.getByRole("region", { name: /shortlist/i }), {
+      dataTransfer: { getData: () => "app-1" },
+    });
 
     await waitFor(() => {
       expect(requests).toHaveLength(1);
@@ -101,6 +170,38 @@ describe("KanbanBoard", () => {
     await waitFor(() => {
       expect(onRefresh).toHaveBeenCalled();
     });
+  });
+
+  it("does not send a status update when a card is dropped back into its own column", async () => {
+    const statusRequests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      if (url.includes("/status") && init?.method === "POST") {
+        statusRequests.push(String(init.body));
+        return jsonResponse({});
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(
+      <KanbanBoard
+        applications={[makeApplication({ current_status: "saved" })]}
+        onRefresh={vi.fn()}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    fireEvent.drop(screen.getByRole("region", { name: /inbox/i }), {
+      dataTransfer: { getData: () => "app-1" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Senior Engineer")).toBeVisible();
+    });
+    expect(statusRequests).toHaveLength(0);
   });
 
   it("opens the opportunity detail view when a card is selected", async () => {
@@ -123,38 +224,6 @@ describe("KanbanBoard", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Senior Engineer/i }));
     expect(onOpenApplication).toHaveBeenCalledWith("app-1");
-  });
-
-  it("preserves a detailed status when dropped back into the same column", async () => {
-    const statusRequests: string[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = requestUrl(input);
-      if (url.includes("/api/tasks")) {
-        return jsonResponse({ tasks: [] });
-      }
-      if (url.includes("/status") && init?.method === "POST") {
-        statusRequests.push(String(init.body));
-        return jsonResponse({});
-      }
-      throw new Error(`Unexpected request to ${url}`);
-    });
-
-    render(
-      <KanbanBoard
-        applications={[makeApplication({ current_status: "rejected" })]}
-        onRefresh={vi.fn()}
-        onOpenApplication={vi.fn()}
-      />,
-    );
-
-    fireEvent.drop(screen.getByRole("region", { name: /closed/i }), {
-      dataTransfer: { getData: () => "app-1" },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Senior Engineer")).toBeVisible();
-    });
-    expect(statusRequests).toHaveLength(0);
   });
 
   it("shows manual labels and derived attention badges on a card", async () => {

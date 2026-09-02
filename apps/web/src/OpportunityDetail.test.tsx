@@ -62,6 +62,9 @@ function mockDetailFetch(
     if (url.includes("/api/applications/app-1") && method === "GET") {
       return jsonResponse({ application: baseApplication, statusEvents: [], matchAssessments: [] });
     }
+    if (url.includes("/api/applications/app-1/status") && method === "POST") {
+      return jsonResponse({ application: baseApplication });
+    }
     if (url.includes("/api/tasks") && method === "POST") {
       return jsonResponse({ task: { id: "task-new" } }, { status: 201 });
     }
@@ -195,5 +198,111 @@ describe("OpportunityDetail", () => {
       title: "Send thank-you note",
       applicationId: "app-1",
     });
+  });
+
+  it("requires choosing an outcome before closing, then posts the chosen outcome", async () => {
+    const posts: { url: string; body: string }[] = [];
+    mockDetailFetch({ posts: (url, body) => posts.push({ url, body }) });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Senior Engineer" })).toBeVisible();
+    });
+
+    const closeButton = screen.getByRole("button", { name: "Close opportunity" });
+    expect(closeButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: "rejected" }));
+    expect(closeButton).toBeEnabled();
+
+    fireEvent.click(closeButton);
+    fireEvent.click(screen.getByRole("button", { name: /confirm close as rejected/i }));
+
+    await waitFor(() => {
+      expect(posts.some((entry) => entry.url.endsWith("/app-1/status"))).toBe(true);
+    });
+    const statusPost = posts.find((entry) => entry.url.endsWith("/app-1/status"));
+    expect(JSON.parse(statusPost?.body ?? "{}")).toMatchObject({ status: "rejected" });
+  });
+
+  it("does not offer a close control for an already-closed opportunity, and offers reopen instead", async () => {
+    mockDetailFetch();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      if (url.includes("/api/applications/app-1") && method === "GET") {
+        return jsonResponse({
+          application: { ...baseApplication, current_status: "rejected" },
+          statusEvents: [],
+          matchAssessments: [],
+        });
+      }
+      if (url.includes("/api/tasks")) return jsonResponse({ tasks: [] });
+      if (url.includes("/api/notes")) return jsonResponse({ notes: [] });
+      if (url.includes("/api/documents")) {
+        return jsonResponse({ documents: [], quota: { usedBytes: 0, maxBytes: 1, count: 0, maxCount: 1 } });
+      }
+      if (url.includes("/api/companies")) return jsonResponse({ companies: [] });
+      if (url.includes("/api/contacts")) return jsonResponse({ contacts: [] });
+      if (url.includes("/api/activity")) return jsonResponse({ events: [] });
+      if (url.includes("/api/labels")) return jsonResponse({ labels: [] });
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Senior Engineer" })).toBeVisible();
+    });
+
+    expect(screen.queryByRole("button", { name: "Close opportunity" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reopen opportunity" })).toBeDisabled();
+  });
+
+  it("reopens a closed opportunity into the chosen active stage", async () => {
+    const posts: { url: string; body: string }[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      const method = init?.method ?? "GET";
+      if (method === "POST") posts.push({ url, body: String(init?.body ?? "") });
+      if (url.includes("/api/applications/app-1") && method === "GET") {
+        return jsonResponse({
+          application: { ...baseApplication, current_status: "rejected" },
+          statusEvents: [],
+          matchAssessments: [],
+        });
+      }
+      if (url.includes("/api/applications/app-1/status") && method === "POST") {
+        return jsonResponse({ application: { ...baseApplication, current_status: "shortlisted" } });
+      }
+      if (url.includes("/api/tasks")) return jsonResponse({ tasks: [] });
+      if (url.includes("/api/notes")) return jsonResponse({ notes: [] });
+      if (url.includes("/api/documents")) {
+        return jsonResponse({ documents: [], quota: { usedBytes: 0, maxBytes: 1, count: 0, maxCount: 1 } });
+      }
+      if (url.includes("/api/companies")) return jsonResponse({ companies: [] });
+      if (url.includes("/api/contacts")) return jsonResponse({ contacts: [] });
+      if (url.includes("/api/activity")) return jsonResponse({ events: [] });
+      if (url.includes("/api/labels")) return jsonResponse({ labels: [] });
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Senior Engineer" })).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText("Reopen into an active stage"), {
+      target: { value: "shortlisted" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reopen opportunity" }));
+
+    await waitFor(() => {
+      expect(posts.some((entry) => entry.url.endsWith("/app-1/status"))).toBe(true);
+    });
+    const statusPost = posts.find((entry) => entry.url.endsWith("/app-1/status"));
+    expect(JSON.parse(statusPost?.body ?? "{}")).toMatchObject({ status: "shortlisted" });
   });
 });

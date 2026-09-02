@@ -8,28 +8,33 @@ import {
   ATTENTION_BADGE_LABELS,
   availableNextStatuses,
   deriveAttentionBadges,
-  groupStatusesByStage,
   nextFollowUpTask,
 } from "./lib/applications";
 import { formatRelativeAge } from "./lib/time";
 
-// The status applied when a card is dropped on a column via drag-and-drop.
-// Dropping on "Closed" always lands on the safe default ("archived"); the
-// accessible "Move to..." select on every card remains the only way to pick
-// a specific outcome (accepted/rejected/withdrawn/dismissed), since a drop
-// gesture alone can't ask a follow-up question.
-function canonicalStatusForDrop(stage: KanbanStage): ApplicationStatus {
+// The active board never renders (or accepts drops onto) a "Closed" column
+// -- closing an opportunity happens exclusively through the explicit outcome
+// control in the opportunity detail view (see OpportunityDetail's
+// CloseSection), never implicitly via drag-and-drop. Closed opportunities
+// live in the separate "Closed opportunities" view (More > Closed).
+const activeKanbanStages = kanbanStages.filter((stage): stage is Exclude<KanbanStage, "closed"> => stage !== "closed");
+
+function canonicalStatusForDrop(stage: Exclude<KanbanStage, "closed">): ApplicationStatus {
   return kanbanStageCanonicalStatus[stage];
 }
 
 export function KanbanBoard({
   applications,
+  closedCount = 0,
   onRefresh,
   onOpenApplication,
+  onOpenClosed,
 }: {
   applications: ApplicationSummary[];
+  closedCount?: number;
   onRefresh: () => Promise<void>;
   onOpenApplication: (applicationId: string) => void;
+  onOpenClosed?: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
   const [formMessage, setFormMessage] = useState<string>();
@@ -37,7 +42,7 @@ export function KanbanBoard({
   const [statusMessage, setStatusMessage] = useState<string>();
   const [updatingId, setUpdatingId] = useState<string>();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
-  const [dragOverStage, setDragOverStage] = useState<KanbanStage>();
+  const [dragOverStage, setDragOverStage] = useState<Exclude<KanbanStage, "closed">>();
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -54,9 +59,17 @@ export function KanbanBoard({
   }, [applications, refreshTasks]);
 
   const columns = useMemo(() => {
-    const byStage = new Map<KanbanStage, ApplicationSummary[]>(kanbanStages.map((stage) => [stage, []]));
+    const byStage = new Map<Exclude<KanbanStage, "closed">, ApplicationSummary[]>(
+      activeKanbanStages.map((stage) => [stage, []]),
+    );
     for (const application of applications) {
-      byStage.get(stageForStatus(application.current_status))?.push(application);
+      const stage = stageForStatus(application.current_status);
+      if (stage === "closed") {
+        // Defense in depth: the active board never shows closed items, even
+        // if a caller passes an unfiltered application list.
+        continue;
+      }
+      byStage.get(stage)?.push(application);
     }
     return byStage;
   }, [applications]);
@@ -107,7 +120,11 @@ export function KanbanBoard({
     }
   }
 
-  function handleDrop(stage: KanbanStage, applicationId: string, currentStatus: ApplicationStatus) {
+  function handleDrop(
+    stage: Exclude<KanbanStage, "closed">,
+    applicationId: string,
+    currentStatus: ApplicationStatus,
+  ) {
     setDragOverStage(undefined);
     if (stageForStatus(currentStatus) === stage) {
       return;
@@ -181,13 +198,22 @@ export function KanbanBoard({
         <article className="panel">
           <div className="empty-state">
             <span className="empty-icon">↗</span>
-            <h3>No opportunities yet</h3>
-            <p>Connect an MCP client or add an opportunity manually to get started.</p>
+            <h3>{closedCount > 0 ? "No active opportunities" : "No opportunities yet"}</h3>
+            <p>
+              {closedCount > 0
+                ? `${closedCount} closed ${closedCount === 1 ? "opportunity is" : "opportunities are"} available under More.`
+                : "Connect an MCP client or add an opportunity manually to get started."}
+            </p>
+            {closedCount > 0 && onOpenClosed ? (
+              <button className="button secondary" type="button" onClick={onOpenClosed}>
+                View closed opportunities
+              </button>
+            ) : null}
           </div>
         </article>
       ) : (
         <div className="kanban-board" role="group" aria-label="Opportunity pipeline, organized by stage">
-          {kanbanStages.map((stage) => {
+          {activeKanbanStages.map((stage) => {
             const stageApplications = columns.get(stage) ?? [];
             return (
               <section
@@ -223,7 +249,6 @@ export function KanbanBoard({
                         application={application}
                         tasks={tasks}
                         updating={updatingId === application.id}
-                        onChangeStatus={(status) => void changeStatus(application.id, status)}
                         onOpen={() => onOpenApplication(application.id)}
                       />
                     ))
@@ -242,25 +267,22 @@ function OpportunityCard({
   application,
   tasks,
   updating,
-  onChangeStatus,
   onOpen,
 }: {
   application: ApplicationSummary;
   tasks: TaskSummary[];
   updating: boolean;
-  onChangeStatus: (status: ApplicationStatus) => void;
   onOpen: () => void;
 }) {
   const applicationTasks = tasks.filter((task) => task.application_id === application.id);
   const badges = deriveAttentionBadges(application, applicationTasks);
   const followUp = nextFollowUpTask(application.id, applicationTasks);
-  const nextStatuses = availableNextStatuses(application.current_status);
-  const statusGroups = groupStatusesByStage(nextStatuses);
 
   return (
     <article
-      className="kanban-card"
+      className={`kanban-card${updating ? " kanban-card-updating" : ""}`}
       draggable
+      aria-busy={updating}
       onDragStart={(event) => {
         event.dataTransfer.setData("text/plain", application.id);
         event.dataTransfer.effectAllowed = "move";
@@ -307,36 +329,6 @@ function OpportunityCard({
             </span>
           ))}
         </div>
-      ) : null}
-
-      {statusGroups.length > 0 ? (
-        <label className="status-control">
-          <span className="sr-only">Move {application.title} to a new status</span>
-          <select
-            aria-label={`Update status for ${application.title}`}
-            disabled={updating}
-            value=""
-            onChange={(event) => {
-              const status = event.target.value as ApplicationStatus;
-              if (status) {
-                onChangeStatus(status);
-              }
-            }}
-          >
-            <option value="" disabled>
-              Move to...
-            </option>
-            {statusGroups.map((group) => (
-              <optgroup label={group.label} key={group.stage}>
-                {group.statuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
       ) : null}
     </article>
   );

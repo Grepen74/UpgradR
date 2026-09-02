@@ -4,17 +4,24 @@ import { isTerminalStatus, kanbanStageLabels, kanbanStages, stageForStatus, type
 import type { ApplicationSummary, TaskSummary } from "../api";
 
 /**
- * Statuses a user may move an application to from its current status.
- * Terminal statuses (accepted/rejected/withdrawn/dismissed/archived) may
- * only move to "archived", mirroring the guard enforced by the
- * transition_application_status() database function.
+ * Statuses a user may move an application to from its current status using
+ * the generic "move to..." control, i.e. moves between *active* Kanban
+ * stages only.
+ *
+ * Closing an active opportunity (accepted/rejected/withdrawn/dismissed/
+ * archived) is intentionally excluded here -- it has its own explicit
+ * control (see OpportunityDetail's CloseSection) that requires picking a
+ * specific outcome rather than silently landing on one via this list.
+ * Likewise, reopening a closed opportunity back into an active stage has
+ * its own dedicated control (see OpportunityDetail's ReopenSection), so a
+ * terminal current status offers nothing here.
  */
 export function availableNextStatuses(current: ApplicationStatus): ApplicationStatus[] {
   if (isTerminalStatus(current)) {
-    return current === "archived" ? [] : ["archived"];
+    return [];
   }
 
-  return applicationStatuses.filter((status) => status !== current);
+  return applicationStatuses.filter((status) => status !== current && !isTerminalStatus(status));
 }
 
 export type StatusStageGroup = {
