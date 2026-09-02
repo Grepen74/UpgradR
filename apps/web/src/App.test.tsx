@@ -63,6 +63,12 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/headline/i)).toHaveValue("Senior iOS Engineer");
     });
+    expect(
+      screen.getByRole("heading", { name: "How agents match you with opportunities" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/connected agents use this information to understand who you are/i),
+    ).toBeVisible();
   });
 
   it("lets a signed-in user switch to the profile imports tab and see empty history", async () => {

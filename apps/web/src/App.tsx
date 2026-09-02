@@ -621,7 +621,11 @@ function ProfileTab() {
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Candidate profile</p>
-          <h2>How you're introduced to opportunities</h2>
+          <h2>How agents match you with opportunities</h2>
+          <p>
+            Connected agents use this information to understand who you are, evaluate job fit,
+            and search for relevant opportunities.
+          </p>
         </div>
         {profile ? (
           <span className={`pill${profile.is_confirmed ? "" : " pill-muted"}`}>
