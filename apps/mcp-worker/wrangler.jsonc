@@ -3,6 +3,15 @@
   "name": "upgradr-mcp-worker",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-31",
+  // Pinned so `npm run dev:web` and `npm run dev:mcp` can run side by side:
+  // both Workers otherwise default to 8787 and inspector port 9229, and
+  // whichever starts second dies with "Address already in use". The port here
+  // must also match MCP_RESOURCE_URL below, since the resource identifier is
+  // what clients validate the token audience against.
+  "dev": {
+    "port": 8788,
+    "inspector_port": 9230
+  },
   "vars": {
     "MCP_RESOURCE_URL": "http://localhost:8788",
     "MCP_ALLOWED_HOSTNAMES": "localhost,127.0.0.1",

@@ -3,6 +3,13 @@
   "name": "upgradr-web",
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-31",
+  // See the matching note in apps/mcp-worker/wrangler.jsonc: the ports are
+  // pinned so both dev servers can run at the same time. 8787 must match
+  // APP_ORIGIN, which is where Supabase redirects for the consent screen.
+  "dev": {
+    "port": 8787,
+    "inspector_port": 9229
+  },
   "assets": {
     "directory": "./dist/client",
     "binding": "ASSETS",
