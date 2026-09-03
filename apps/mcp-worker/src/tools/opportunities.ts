@@ -9,11 +9,30 @@ import type { ToolContext } from "./types";
 
 const searchOpportunitiesSchema = z
   .object({
-    title: z.string().trim().min(1).max(200).optional(),
-    companyName: z.string().trim().min(1).max(200).optional(),
-    location: z.string().trim().max(200).optional(),
-    sourceUrl: safeSourceUrlSchema.optional(),
-    limit: z.number().int().min(1).max(50).optional(),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("Match against the job title. Partial matches count."),
+    companyName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("Match against the company name. Partial matches count."),
+    location: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .describe("Narrow results by location. Only meaningful alongside another filter."),
+    sourceUrl: safeSourceUrlSchema
+      .optional()
+      .describe("Exact posting URL. The most precise way to check whether a job is already tracked."),
+    limit: z.number().int().min(1).max(50).optional().describe("Maximum results, 1-50. Defaults to a bounded page."),
   })
   .refine((input) => Boolean(input.title || input.companyName || input.sourceUrl), {
     message: "Provide at least a title, companyName, or sourceUrl to search for existing opportunities.",
@@ -22,9 +41,14 @@ const searchOpportunitiesSchema = z
 const emptyInputSchema = z.object({});
 
 const knownOpportunityKeysSchema = z.object({
-  updatedSince: z.iso.datetime().optional(),
-  limit: z.number().int().min(1).max(200).optional(),
-  offset: z.number().int().min(0).max(10_000).optional(),
+  updatedSince: z.iso
+    .datetime()
+    .optional()
+    .describe(
+      "ISO 8601 timestamp. Return only keys for opportunities changed since then, so a repeat run can fetch just the delta.",
+    ),
+  limit: z.number().int().min(1).max(200).optional().describe("Keys per page, 1-200."),
+  offset: z.number().int().min(0).max(10_000).optional().describe("Number of keys to skip, for paging."),
 });
 
 const OPPORTUNITY_SELECT =

@@ -6,8 +6,13 @@ import { registerScopedTool } from "./scoped-tool";
 import type { ToolContext } from "./types";
 
 const addNoteSchema = z.object({
-  applicationId: z.uuid(),
-  body: z.string().trim().min(1).max(8_000),
+  applicationId: z.uuid().describe("Opportunity to attach the note to."),
+  body: z
+    .string()
+    .trim()
+    .min(1)
+    .max(8_000)
+    .describe("Note text. Stored as agent-authored, with your client identity recorded alongside it."),
 });
 
 /**

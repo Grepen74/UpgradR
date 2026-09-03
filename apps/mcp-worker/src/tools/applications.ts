@@ -12,20 +12,35 @@ import { registerScopedTool } from "./scoped-tool";
 import type { ToolContext } from "./types";
 
 const searchApplicationsSchema = z.object({
-  status: applicationStatusSchema.optional(),
-  query: z.string().trim().min(1).max(200).optional(),
-  limit: z.number().int().min(1).max(50).optional(),
-  offset: z.number().int().min(0).max(10_000).optional(),
+  status: applicationStatusSchema
+    .optional()
+    .describe("Restrict to one pipeline status. Omit to search across all of them."),
+  query: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe("Free-text search over title, company, and location."),
+  limit: z.number().int().min(1).max(50).optional().describe("Results per page, 1-50."),
+  offset: z.number().int().min(0).max(10_000).optional().describe("Number of results to skip, for paging."),
 });
 
 const getApplicationSchema = z.object({
-  applicationId: z.uuid(),
+  applicationId: z.uuid().describe("Id of the opportunity, as returned by search_applications."),
 });
 
 const moveApplicationStatusSchema = z.object({
-  applicationId: z.uuid(),
-  newStatus: applicationStatusSchema,
-  note: z.string().trim().max(2_000).optional(),
+  applicationId: z.uuid().describe("Id of the opportunity to transition."),
+  newStatus: applicationStatusSchema.describe(
+    "Target status. The transition is recorded in the opportunity's status history.",
+  ),
+  note: z
+    .string()
+    .trim()
+    .max(2_000)
+    .optional()
+    .describe("Why the status changed. Shown to the user on the activity timeline."),
 });
 
 const APPLICATION_SELECT =

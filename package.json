@@ -14,6 +14,8 @@
     "lint": "npm run lint --workspaces --if-present",
     "dev:web": "npm run dev --workspace @upgradr/web",
     "dev:mcp": "npm run dev --workspace @upgradr/mcp-worker",
+    "mcp:login": "node scripts/mcp-agent-login.mjs",
+    "mcp:tools-doc": "node scripts/generate-mcp-tools-doc.mjs",
     "check:mcp-local": "node scripts/mcp-local-e2e.mjs"
   },
   "engines": {

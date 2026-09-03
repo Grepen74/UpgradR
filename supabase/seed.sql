@@ -6,6 +6,13 @@
 -- app's sign-up flow (magic link) against the local stack to create a user,
 -- then exercise the schema through the API.
 --
+-- Signing in without a browser: local Supabase routes ALL outbound mail to
+-- Mailpit at http://127.0.0.1:54324 -- including messages addressed to real
+-- external addresses, which are never actually delivered. A script or agent
+-- can therefore request a magic link for any address, read it out of Mailpit,
+-- and authenticate as that user. `npm run mcp:login -- --email you@example.com`
+-- does exactly this; see docs/mcp.md, "Headless / scripted clients".
+--
 -- Database-level fixtures for automated testing live under
 -- supabase/tests/database and create their own throwaway auth.users rows
 -- inside a rolled-back transaction.

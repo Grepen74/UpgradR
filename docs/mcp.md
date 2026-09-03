@@ -70,6 +70,11 @@ Users can review, narrow, widen, or revoke grants from the web app's
 
 ## Tools
 
+**[mcp-tools.md](./mcp-tools.md) is the complete reference**: every tool name,
+its required scope, and its full argument schema. That file is generated from a
+live `tools/list` response by `npm run mcp:tools-doc`, so it cannot drift from
+the server. Regenerate it whenever a tool or schema changes.
+
 The resource server provides goal-oriented tools for:
 
 - Reading the dashboard, confirmed profile, and preferences.
@@ -115,6 +120,88 @@ fetch the user's whole known-key set (canonical URLs, provider job ids,
 fingerprints, and closed flags) and filter candidates locally, rather than
 searching per candidate. It is an optimization, not a security boundary: an
 agent that skips it still cannot create a duplicate.
+
+## Headless / scripted clients
+
+An agent that needs to act as the real signed-in user without a browser cannot
+use the `/mcp` + consent-screen flow. Use the headless helper instead:
+
+```sh
+npm run mcp:login -- --email you@example.com
+```
+
+It prints `UPGRADR_ACCESS_TOKEN`, `UPGRADR_REFRESH_TOKEN`, and
+`UPGRADR_CLIENT_ID` as shell exports, plus a ready-made `curl`. Useful flags:
+
+| Flag | Effect |
+|---|---|
+| `--email` | Which local user to sign in as. Required. |
+| `--scopes` | Space- or comma-separated scope list. Defaults to the recommended read-only set. |
+| `--create-user` | Create the user if it does not exist yet, instead of failing. |
+| `--call <tool>` | Immediately call a no-argument tool, to prove the token works. |
+| `--json` | Emit machine-readable JSON instead of the human summary. |
+
+The reusable pieces live in `scripts/lib/mcp-agent-auth.mjs` if you would rather
+drive the flow from your own script than shell out.
+
+### Signing in as a real user locally
+
+Local Supabase routes **all** outbound mail to Mailpit
+(`http://127.0.0.1:54324`), including messages addressed to real external
+addresses. Nothing is actually delivered. That means a script can request a
+magic link for the account you use in the browser, read the link straight out of
+Mailpit, and authenticate as that user against real data — which is exactly what
+`mcp:login` does. There are no seeded credentials to look up.
+
+Two details that are easy to get wrong:
+
+- The magic link carries the token as **`?token=`**, but `verifyOtp` expects it
+  as **`token_hash`** with `type: "magiclink"`. Passing it as `token` fails with
+  a misleading error.
+- Mailpit receives mail asynchronously, so poll for the message, and match on
+  the recipient address rather than taking the newest message — otherwise
+  concurrent runs steal each other's links.
+
+### `getAuthorizationDetails` is required before `approveAuthorization`
+
+Calling `supabase.auth.oauth.approveAuthorization()` without first calling
+`getAuthorizationDetails()` fails with an opaque
+`AuthApiError: authorization not found`, even though the authorization plainly
+exists.
+
+The reason is that `getAuthorizationDetails` is not merely a read: it *binds*
+the pending authorization to the signed-in user by setting
+`auth.oauth_authorizations.user_id`, which is nullable and starts null. Approval
+looks the row up by `(authorization_id, user_id)`, so an unbound row is
+invisible to it. Always call them in that order.
+
+Note also that a pending authorization expires **3 minutes** after it is
+created, so do not pause between `/authorize` and approval.
+
+### Token lifetime and refresh
+
+Access tokens are valid for **60 minutes** (`jwt_expiry = 3600` in
+`supabase/config.toml`). Do not confuse this with the 3-minute *authorization*
+window above — a client that appears to expire "within minutes" has usually
+stalled mid-authorization rather than had its token expire.
+
+An expired token gets `401` with `WWW-Authenticate: Bearer error="invalid_token"`.
+Refresh it against the OAuth token endpoint:
+
+```sh
+curl -sS "http://127.0.0.1:54321/auth/v1/oauth/token" \
+  -H "apikey: $SUPABASE_ANON_KEY" \
+  -d "grant_type=refresh_token&client_id=$UPGRADR_CLIENT_ID&refresh_token=$UPGRADR_REFRESH_TOKEN"
+```
+
+**Refresh token rotation is enabled**, so each response returns a *new* refresh
+token and spends the old one. Always persist the newest value. A reuse interval
+of 10 seconds tolerates a retried request, but replaying an old token beyond
+that revokes the whole session.
+
+Refreshing is also how a client picks up a scope change: the access token hook
+re-reads `public.mcp_grant_scopes` on every issue, so a grant the user narrowed
+in the web app takes effect on the agent's next refresh.
 
 ## Local verification
 

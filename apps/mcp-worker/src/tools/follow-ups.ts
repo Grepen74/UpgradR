@@ -7,21 +7,24 @@ import { registerScopedTool } from "./scoped-tool";
 import type { ToolContext } from "./types";
 
 const listFollowUpsSchema = z.object({
-  applicationId: z.uuid().optional(),
-  includeCompleted: z.boolean().optional(),
-  limit: z.number().int().min(1).max(50).optional(),
-  offset: z.number().int().min(0).max(10_000).optional(),
+  applicationId: z.uuid().optional().describe("Only follow-ups for this opportunity. Omit for all of them."),
+  includeCompleted: z
+    .boolean()
+    .optional()
+    .describe("Include already-completed follow-ups. Defaults to false."),
+  limit: z.number().int().min(1).max(50).optional().describe("Results per page, 1-50."),
+  offset: z.number().int().min(0).max(10_000).optional().describe("Number of results to skip, for paging."),
 });
 
 const createFollowUpSchema = z.object({
-  applicationId: z.uuid(),
-  title: z.string().trim().min(1).max(200),
-  notes: z.string().trim().max(4_000).optional(),
-  dueAt: z.iso.datetime().optional(),
+  applicationId: z.uuid().describe("Opportunity this follow-up belongs to."),
+  title: z.string().trim().min(1).max(200).describe("What needs doing, e.g. 'Send thank-you note to recruiter'."),
+  notes: z.string().trim().max(4_000).optional().describe("Extra context for the user."),
+  dueAt: z.iso.datetime().optional().describe("ISO 8601 due date. Past dates count as overdue immediately."),
 });
 
 const completeFollowUpSchema = z.object({
-  followUpId: z.uuid(),
+  followUpId: z.uuid().describe("Id of the follow-up, as returned by list_follow_ups."),
 });
 
 const FOLLOW_UP_SELECT = "id,application_id,title,description,due_at,is_completed,completed_at";

@@ -84,6 +84,11 @@ Most MCP work needs all three running at once — Supabase, the MCP Worker, and
 the web app — because Supabase redirects the OAuth `/authorize` request to the
 consent screen the web app serves on port 8787.
 
+To get a token without a browser (for a script, a test, or a coding agent),
+run `npm run mcp:login -- --email you@example.com`. It only needs Supabase and
+the MCP Worker, since it approves the consent step through the API rather than
+the web page. See [mcp.md](./mcp.md#headless--scripted-clients).
+
 ## Validation
 
 ```sh

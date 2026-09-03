@@ -19,7 +19,12 @@ export const destructiveOperationTypes = [
 export const destructiveOperationTypeSchema = z.enum(destructiveOperationTypes);
 export type DestructiveOperationType = z.infer<typeof destructiveOperationTypeSchema>;
 
-const reasonSchema = z.string().trim().max(500).optional();
+const reasonSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .optional()
+  .describe("Why this is being deleted. Shown to the user in the confirmation summary and kept in the audit trail.");
 
 /**
  * Each operation type carries its own bounded target shape. This is stored
@@ -31,22 +36,26 @@ const reasonSchema = z.string().trim().max(500).optional();
 export const prepareDestructiveOperationSchema = z.discriminatedUnion("operationType", [
   z.object({
     operationType: z.literal("delete_application"),
-    applicationId: z.uuid(),
+    applicationId: z.uuid().describe("Opportunity to delete, along with its notes, follow-ups, and history."),
     reason: reasonSchema,
   }),
   z.object({
     operationType: z.literal("delete_follow_up"),
-    followUpId: z.uuid(),
+    followUpId: z.uuid().describe("Follow-up task to delete."),
     reason: reasonSchema,
   }),
   z.object({
     operationType: z.literal("delete_note"),
-    noteId: z.uuid(),
+    noteId: z.uuid().describe("Note to delete."),
     reason: reasonSchema,
   }),
   z.object({
     operationType: z.literal("bulk_archive_applications"),
-    applicationIds: z.array(z.uuid()).min(1).max(20),
+    applicationIds: z
+      .array(z.uuid())
+      .min(1)
+      .max(20)
+      .describe("Between 1 and 20 opportunities to archive in a single confirmed operation."),
     reason: reasonSchema,
   }),
 ]);
@@ -63,7 +72,11 @@ export type PrepareDestructiveOperationInput = z.infer<typeof prepareDestructive
  * `public.execute_mcp_pending_operation()`.
  */
 export const confirmOperationSchema = z.object({
-  operationToken: z.uuid(),
+  operationToken: z
+    .uuid()
+    .describe(
+      "The single-use token returned by prepare_destructive_operation. Valid for 15 minutes, and only for the exact operation that was summarized.",
+    ),
 });
 
 /** Per-operation-type shape of the `target` jsonb column. */
