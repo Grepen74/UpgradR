@@ -46,6 +46,9 @@ if (tools.length === 0) {
   process.exit(1);
 }
 
+const listedPrompts = await call("prompts/list");
+const prompts = listedPrompts.result?.prompts ?? [];
+
 function renderSchema(schema) {
   if (!schema || typeof schema !== "object") return "_No arguments._";
 
@@ -156,7 +159,8 @@ lines.push("     produced from a live `tools/list` response so it cannot drift. 
 lines.push("");
 lines.push(
   `Server \`${server.name ?? "upgradr-mcp-worker"}\` version \`${server.version ?? "unknown"}\`, ` +
-    `protocol \`${init.result?.protocolVersion ?? "unknown"}\`, ${tools.length} tools.`,
+    `protocol \`${init.result?.protocolVersion ?? "unknown"}\`, ${tools.length} tools` +
+    `${prompts.length > 0 ? `, ${prompts.length} prompts` : ""}.`,
 );
 lines.push("");
 lines.push(
@@ -188,6 +192,33 @@ for (const tool of tools) {
   lines.push(`| [\`${tool.name}\`](#${tool.name}) | ${scopes} | ${summary} |`);
 }
 lines.push("");
+
+if (prompts.length > 0) {
+  lines.push("## Prompts");
+  lines.push("");
+  lines.push(
+    "Named workflows that sequence the tools above. A client surfaces them as " +
+      "slash commands or menu entries, so a user can invoke one by name instead " +
+      "of describing the steps. Prompt text is generated from the caller's " +
+      "granted scopes, so the wording below reflects a full-scope grant.",
+  );
+  lines.push("");
+  lines.push("| Prompt | Arguments | Summary |");
+  lines.push("|---|---|---|");
+  for (const prompt of prompts) {
+    const args = (prompt.arguments ?? []).length
+      ? prompt.arguments
+          .map((arg) => `\`${arg.name}\`${arg.required ? "" : "?"}`)
+          .join(", ")
+      : "_none_";
+    const summary = firstSentence(prompt.description ?? prompt.title ?? "").replace(
+      /\|/g,
+      "\\|",
+    );
+    lines.push(`| \`${prompt.name}\` | ${args} | ${summary} |`);
+  }
+  lines.push("");
+}
 
 for (const tool of tools) {
   lines.push(`## ${tool.name}`);

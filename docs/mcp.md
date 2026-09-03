@@ -203,6 +203,31 @@ Refreshing is also how a client picks up a scope change: the access token hook
 re-reads `public.mcp_grant_scopes` on every issue, so a grant the user narrowed
 in the web app takes effect on the agent's next refresh.
 
+## Prompts
+
+Tools are the authoritative mutation interface, but they are deliberately
+granular, so driving them well means knowing the right *order*. Prompts package
+that ordering as named workflows a user can invoke directly — clients surface
+them as slash commands or menu entries — so someone can ask for "the weekly job
+search" rather than reciting the steps.
+
+| Prompt | Arguments | What it drives |
+|---|---|---|
+| `weekly_job_search` | `focus`, `maxProposals` (both optional) | Read profile and preferences → **reconcile against known opportunity keys** → search the web → evaluate → create proposals → report |
+| `review_pipeline` | `horizon` (optional) | Dashboard → follow-ups → stalled opportunities → a short prioritized list of next actions |
+| `triage_proposals` | none | Read the Inbox → recommend shortlist or close per item → apply only what the user approves |
+
+The most important thing they encode is the de-duplication step: an agent left
+to its own devices reliably skips `list_known_opportunity_keys` and re-proposes
+jobs the user already closed. The prompt makes that step explicit and explains
+why closed items must not come back.
+
+**Prompt text adapts to the granted scopes.** It is generated per request from
+the caller's token, so a read-only connection is told to present its shortlist
+in the conversation rather than being instructed to call
+`create_job_proposals` and be refused. Telling an agent to call a tool it will
+be denied wastes a turn and surfaces a confusing error to the user.
+
 ## Local verification
 
 `npm run check:mcp-local` drives the entire chain against the local stack with

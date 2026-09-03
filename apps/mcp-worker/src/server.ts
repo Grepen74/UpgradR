@@ -2,6 +2,7 @@ import { McpServer, type AuthInfo, type McpServerFactory } from "@modelcontextpr
 
 import type { VerifiedAuthInfo } from "./auth/claims";
 import type { ResolvedMcpConfig } from "./env";
+import { registerAllPrompts } from "./prompts/register";
 import { createSupabaseRestClient } from "./supabase/rest-client";
 import { registerAllTools } from "./tools/register";
 
@@ -29,7 +30,11 @@ export function createServerFactory(config: ResolvedMcpConfig): McpServerFactory
       accessToken: verifiedAuth.token,
     });
 
-    registerAllTools(server, { auth: verifiedAuth, supabase });
+    const toolContext = { auth: verifiedAuth, supabase };
+    registerAllTools(server, toolContext);
+    // Prompts are built from the caller's granted scopes, so they must be
+    // registered per request alongside the tools rather than once per Worker.
+    registerAllPrompts(server, toolContext);
     return server;
   };
 }
