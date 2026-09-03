@@ -8,7 +8,6 @@ import {
   type ApplicationSummary,
   type CandidateProfile,
   type DashboardSummary,
-  type JobSearchPreferences,
   type SessionUser,
   type TaskSummary,
 } from "./api";
@@ -24,9 +23,9 @@ import { DocumentsTab } from "./DocumentsTab";
 import { KanbanBoard } from "./KanbanBoard";
 import { NotesTab } from "./NotesTab";
 import { OpportunityDetail } from "./OpportunityDetail";
+import { PreferencesTab } from "./PreferencesTab";
 import { StatusMessage } from "./components/Feedback";
 import { useOpportunityRoute } from "./lib/routing";
-import { formatCommaList, parseCommaList } from "./lib/preferences";
 import { isTaskOverdue } from "./lib/tasks";
 import { ProfileImportsTab } from "./ProfileImportsTab";
 
@@ -757,180 +756,6 @@ function ProfileTab() {
   );
 }
 
-const emptyPreferences: JobSearchPreferences = {
-  targetRoles: [],
-  locations: [],
-  remotePolicy: "flexible",
-  minimumCompensation: null,
-  compensationCurrency: null,
-  industries: [],
-  excludedCompanies: [],
-  notes: null,
-};
-
-function PreferencesTab() {
-  const [preferences, setPreferences] = useState<JobSearchPreferences>();
-  const [form, setForm] = useState(emptyPreferences);
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    void api
-      .getPreferences()
-      .then((loaded) => {
-        setPreferences(loaded);
-        setForm(loaded);
-      })
-      .catch((error) => {
-        setMessage(error instanceof Error ? error.message : "Unable to load job preferences.");
-      });
-  }, []);
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage(undefined);
-
-    try {
-      await api.updatePreferences(form);
-      setPreferences(form);
-      setMessage("Saved.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save job preferences.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <article className="panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">Job search preferences</p>
-          <h2>What agents should look for on your behalf</h2>
-        </div>
-      </div>
-
-      {preferences === undefined ? (
-        <p>Loading preferences...</p>
-      ) : (
-        <form className="stacked-form" onSubmit={(event) => void save(event)}>
-          <div>
-            <label htmlFor="targetRoles">Target roles (comma-separated)</label>
-            <input
-              id="targetRoles"
-              value={formatCommaList(form.targetRoles)}
-              onChange={(event) =>
-                setForm((value) => ({ ...value, targetRoles: parseCommaList(event.target.value) }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor="locations">Locations (comma-separated)</label>
-            <input
-              id="locations"
-              value={formatCommaList(form.locations)}
-              onChange={(event) =>
-                setForm((value) => ({ ...value, locations: parseCommaList(event.target.value) }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor="remotePolicy">Remote policy</label>
-            <select
-              id="remotePolicy"
-              value={form.remotePolicy}
-              onChange={(event) =>
-                setForm((value) => ({
-                  ...value,
-                  remotePolicy: event.target.value as JobSearchPreferences["remotePolicy"],
-                }))
-              }
-            >
-              <option value="onsite">Onsite</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="remote">Remote</option>
-              <option value="flexible">Flexible</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="minimumCompensation">Minimum compensation</label>
-            <input
-              id="minimumCompensation"
-              type="number"
-              min={0}
-              value={form.minimumCompensation ?? ""}
-              onChange={(event) =>
-                setForm((value) => ({
-                  ...value,
-                  minimumCompensation: event.target.value === "" ? null : Number(event.target.value),
-                }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor="compensationCurrency">Currency (3 letters)</label>
-            <input
-              id="compensationCurrency"
-              maxLength={3}
-              value={form.compensationCurrency ?? ""}
-              onChange={(event) =>
-                setForm((value) => ({
-                  ...value,
-                  compensationCurrency: event.target.value ? event.target.value : null,
-                }))
-              }
-            />
-          </div>
-          <div>
-            <label htmlFor="industries">Industries (comma-separated)</label>
-            <input
-              id="industries"
-              value={formatCommaList(form.industries)}
-              onChange={(event) =>
-                setForm((value) => ({ ...value, industries: parseCommaList(event.target.value) }))
-              }
-            />
-          </div>
-          <div className="wide">
-            <label htmlFor="excludedCompanies">Excluded companies (comma-separated)</label>
-            <input
-              id="excludedCompanies"
-              value={formatCommaList(form.excludedCompanies)}
-              onChange={(event) =>
-                setForm((value) => ({
-                  ...value,
-                  excludedCompanies: parseCommaList(event.target.value),
-                }))
-              }
-            />
-          </div>
-          <div className="wide">
-            <label htmlFor="notes">Notes</label>
-            <textarea
-              id="notes"
-              rows={4}
-              maxLength={4_000}
-              value={form.notes ?? ""}
-              onChange={(event) =>
-                setForm((value) => ({
-                  ...value,
-                  notes: event.target.value ? event.target.value : null,
-                }))
-              }
-            />
-          </div>
-          <div className="form-actions wide">
-            {message ? <StatusMessage>{message}</StatusMessage> : <span />}
-            <button className="button primary" disabled={saving}>
-              {saving ? "Saving..." : "Save preferences"}
-            </button>
-          </div>
-        </form>
-      )}
-    </article>
-  );
-}
 
 function Metric({
   value,

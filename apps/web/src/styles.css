@@ -823,6 +823,13 @@ input[type="radio"] {
   font-weight: 800;
 }
 
+/* Sits below its input, so the grid gap already separates it. */
+.field-hint {
+  margin: 0;
+  color: var(--muted, #6b6b83);
+  font-size: 0.78rem;
+}
+
 .stacked-form input,
 .stacked-form textarea,
 .task-form input {
