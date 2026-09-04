@@ -15,6 +15,7 @@ export interface ConfirmedRow {
 export interface CandidateProfileRow extends ConfirmedRow {
   headline: string | null;
   summary: string | null;
+  relevant_experience: string | null;
   last_reviewed_at: string | null;
 }
 
@@ -62,6 +63,7 @@ export function assembleCandidateProfile(
   return {
     headline: confirmedProfile?.headline ?? null,
     summary: confirmedProfile?.summary ?? null,
+    relevantExperience: confirmedProfile?.relevant_experience ?? null,
     lastReviewedAt: confirmedProfile?.last_reviewed_at ?? null,
     experiences: filterConfirmed(experiences).map((row) => ({
       company: row.company,

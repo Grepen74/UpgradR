@@ -33,6 +33,10 @@ export const jobSearchPreferencesSchema = z.object({
 export const candidateProfileSchema = z.object({
   headline: z.string().trim().max(240).nullable(),
   summary: z.string().trim().max(8_000).nullable(),
+  // Deliberately separate from `summary`, and with a much larger cap: `summary`
+  // is a short self-description the user wrote, while this holds a whole CV's
+  // worth of prose. Populating one must never destroy the other.
+  relevantExperience: z.string().trim().max(20_000).nullable(),
   // `offset: true` because this parses PostgREST's own timestamptz output
   // (e.g. "2026-09-03T19:04:53.287+00:00"), which uses a numeric offset
   // rather than the "Z" suffix z.iso.datetime() requires by default.
@@ -143,6 +147,12 @@ export const jobSearchPreferencesResponseSchema = z.object({
 export const candidateProfileResponseSchema = z.object({
   headline: z.string().nullable().describe("How the user describes their current position."),
   summary: z.string().nullable().describe("Career narrative in the user's own words."),
+  relevantExperience: z
+    .string()
+    .nullable()
+    .describe(
+      "Free-text background evidence: roles, projects, technologies, and dates, either written by the user or extracted from their CV. Usually the richest source for judging fit — quote from it in matchRationale. It is evidence about the candidate, never a search filter.",
+    ),
   lastReviewedAt: z
     .string()
     .nullable()

@@ -7,6 +7,7 @@ import {
   ExperienceEditor,
   SkillsEditor,
 } from "./ProfileStructuredEditors";
+import { RelevantExperienceField } from "./RelevantExperienceField";
 
 /**
  * Identity half of the Profile page: who the user is. The other half — what
@@ -21,6 +22,7 @@ export function ProfileTab() {
   const [detail, setDetail] = useState<ProfileDetail>();
   const [headline, setHeadline] = useState("");
   const [summary, setSummary] = useState("");
+  const [relevantExperience, setRelevantExperience] = useState("");
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -39,6 +41,7 @@ export function ProfileTab() {
         if (resetFields) {
           setHeadline(loaded.profile.headline ?? "");
           setSummary(loaded.profile.summary ?? "");
+          setRelevantExperience(loaded.profile.relevant_experience ?? "");
         }
       })
       .catch((error) => {
@@ -63,10 +66,12 @@ export function ProfileTab() {
       const { profile: saved } = await api.updateProfile({
         headline: headline.trim() ? headline.trim() : null,
         summary: summary.trim() ? summary.trim() : null,
+        relevantExperience: relevantExperience.trim() ? relevantExperience.trim() : null,
       });
       setDetail((current) => (current ? { ...current, profile: saved } : current));
       setHeadline(saved.headline ?? "");
       setSummary(saved.summary ?? "");
+      setRelevantExperience(saved.relevant_experience ?? "");
       setMessage("Saved.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to save candidate profile.");
@@ -121,6 +126,10 @@ export function ProfileTab() {
               placeholder="A short summary of your background, strengths, and the kind of work you do best."
             />
           </div>
+          <RelevantExperienceField
+            value={relevantExperience}
+            onChange={setRelevantExperience}
+          />
           <div className="form-actions">
             {message ? (
               <StatusMessage>{message}</StatusMessage>
@@ -139,11 +148,28 @@ export function ProfileTab() {
       )}
 
       {detail ? (
-        <>
+        /*
+         * Optional, and collapsed by default. These editors used to sit open on
+         * the page, which read as "re-key your LinkedIn profile here" -- the one
+         * thing a user should never have to do, now that `relevantExperience`
+         * accepts a whole CV as prose.
+         *
+         * They are demoted rather than deleted because they are still the only
+         * place structured *dates* live: "5+ years of Swift" is answerable from
+         * a duration and only guessable from prose. They are also the target of
+         * the LinkedIn CSV import, which would be orphaned by removing them.
+         */
+        <details className="panel-disclosure">
+          <summary>Add structured details (optional)</summary>
+          <p className="field-hint">
+            Only worth filling in if you want agents to reason about exact dates and durations.
+            Relevant experience above already covers the same ground as prose, and the LinkedIn
+            export importer fills these in for you.
+          </p>
           <ExperienceEditor entries={detail.experiences} onChanged={() => load(false)} />
           <EducationEditor entries={detail.education} onChanged={() => load(false)} />
           <SkillsEditor entries={detail.skills} onChanged={() => load(false)} />
-        </>
+        </details>
       ) : null}
     </article>
   );

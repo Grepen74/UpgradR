@@ -108,12 +108,32 @@ describe("profileUpdateSchema", () => {
       profileUpdateSchema.safeParse({
         headline: "Senior iOS Engineer",
         summary: "Ten years building mobile apps.",
+        relevantExperience: "Spotify, 2019-2025: led the playback team.",
       }).success,
     ).toBe(true);
   });
 
   it("allows clearing fields with null", () => {
-    expect(profileUpdateSchema.safeParse({ headline: null, summary: null }).success).toBe(true);
+    expect(
+      profileUpdateSchema.safeParse({
+        headline: null,
+        summary: null,
+        relevantExperience: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects relevant experience beyond the column's length limit", () => {
+    // Mirrors the check constraint on candidate_profiles.relevant_experience,
+    // so an over-long CV is refused with a named field rather than as an opaque
+    // 23514 from Postgres.
+    expect(
+      profileUpdateSchema.safeParse({
+        headline: null,
+        summary: null,
+        relevantExperience: "x".repeat(20_001),
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects an overlong headline", () => {

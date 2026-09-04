@@ -347,7 +347,7 @@ app.get("/api/profile", async (context) => {
 
   const { data: profile, error } = await auth.supabase
     .from("candidate_profiles")
-    .select("headline,summary,is_confirmed,last_reviewed_at")
+    .select("headline,summary,relevant_experience,is_confirmed,last_reviewed_at")
     .eq("owner_id", auth.userId)
     .single();
   if (error) {
@@ -398,11 +398,12 @@ app.patch("/api/profile", async (context) => {
     .update({
       headline: parsed.data.headline,
       summary: parsed.data.summary,
+      relevant_experience: parsed.data.relevantExperience,
       is_confirmed: true,
       last_reviewed_at: new Date().toISOString(),
     })
     .eq("owner_id", auth.userId)
-    .select("headline,summary,is_confirmed,last_reviewed_at")
+    .select("headline,summary,relevant_experience,is_confirmed,last_reviewed_at")
     .single();
   if (error) {
     return context.json({ error: "Unable to save candidate profile" }, 502);

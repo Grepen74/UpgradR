@@ -118,6 +118,7 @@ export type OAuthGrant = {
 export type CandidateProfile = {
   headline: string | null;
   summary: string | null;
+  relevant_experience: string | null;
   is_confirmed: boolean;
   last_reviewed_at: string | null;
 };
@@ -527,7 +528,11 @@ export const api = {
       method: "DELETE",
     }),
   getProfile: () => apiRequest<ProfileDetail>("/api/profile"),
-  updateProfile: (input: { headline: string | null; summary: string | null }) =>
+  updateProfile: (input: {
+    headline: string | null;
+    summary: string | null;
+    relevantExperience: string | null;
+  }) =>
     apiRequest<{ profile: CandidateProfile }>("/api/profile", {
       method: "PATCH",
       body: JSON.stringify(input),

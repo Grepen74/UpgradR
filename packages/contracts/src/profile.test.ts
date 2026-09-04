@@ -5,6 +5,7 @@ import { candidateProfileSchema } from "./profile";
 const baseProfile = {
   headline: "Senior iOS Engineer",
   summary: null,
+  relevantExperience: null,
   experiences: [],
   education: [],
   skills: [],

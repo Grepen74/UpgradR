@@ -114,7 +114,7 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
       );
 
       sections.push(
-        "**4b. Score on evidence.**\nOnly now bring in the profile, and only for candidates that survived 4a. Ground `matchScore` and `matchRationale` in specific experience, education, and skills rather than restating the job ad. Be honest about gaps — this is decision support for a real job search, not a sales pitch, and a short specific rationale is worth more than a high score.\nA weak profile match is a low score. A failed preference is not a score at all: it was already dropped in 4a.",
+        "**4b. Score on evidence.**\nOnly now bring in the profile, and only for candidates that survived 4a. Ground `matchScore` and `matchRationale` in specific experience, education, and skills rather than restating the job ad. `relevantExperience` is usually the richest source and often the *only* one — the structured lists are optional in the app, so an empty `experiences`/`education`/`skills` means \"not entered\", never \"no such background\", and must not be scored as a gap. Be honest about real gaps — this is decision support for a real job search, not a sales pitch, and a short specific rationale is worth more than a high score.\nA weak profile match is a low score. A failed preference is not a score at all: it was already dropped in 4a.",
       );
 
       sections.push(

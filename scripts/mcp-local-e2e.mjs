@@ -471,6 +471,64 @@ if (accessToken) {
       Object.keys(profileTool?.outputSchema?.properties ?? {}).join(","),
     );
 
+    // Relevant experience is now the field most users will actually fill in,
+    // since the structured editors became optional. Two things are only
+    // provable end to end: that a user-written value survives PostgREST, the
+    // confirmed-fields filter, the output schema, and the wire unchanged; and
+    // that the confirmation gate really withholds it, which is the largest
+    // single disclosure the product could make.
+    const cvText = `Harness CV ${runId}: Spotify 2019-2025, led the playback team. Swift, SwiftUI.`;
+    const { error: cvError } = await supabase
+      .from("candidate_profiles")
+      .update({ relevant_experience: cvText, is_confirmed: true })
+      .eq("owner_id", session.session.user.id);
+    check(!cvError, "the user can write relevant experience under their own RLS", cvError?.message);
+
+    const confirmedProfile = await rpc(
+      "tools/call",
+      { name: "get_candidate_profile", arguments: {} },
+      73,
+    );
+    check(
+      confirmedProfile.body?.result?.structuredContent?.relevantExperience === cvText,
+      "a confirmed profile returns relevant experience over the wire unchanged",
+      `len=${confirmedProfile.body?.result?.structuredContent?.relevantExperience?.length}`,
+    );
+
+    const profileToolSchema = (listedTools.body?.result?.tools ?? []).find(
+      (tool) => tool.name === "get_candidate_profile",
+    );
+    check(
+      (
+        profileToolSchema?.outputSchema?.properties?.relevantExperience?.description ?? ""
+      ).includes("never a search filter"),
+      "the published return shape tells an agent what relevant experience is for",
+      Object.keys(profileToolSchema?.outputSchema?.properties ?? {}).join(","),
+    );
+
+    await supabase
+      .from("candidate_profiles")
+      .update({ is_confirmed: false })
+      .eq("owner_id", session.session.user.id);
+
+    const unconfirmedProfile = await rpc(
+      "tools/call",
+      { name: "get_candidate_profile", arguments: {} },
+      74,
+    );
+    check(
+      unconfirmedProfile.body?.result?.structuredContent?.relevantExperience === null,
+      "an unconfirmed profile withholds relevant experience entirely",
+      `value=${JSON.stringify(unconfirmedProfile.body?.result?.structuredContent?.relevantExperience)}`,
+    );
+
+    // Left as the harness found it, so a second run starts from the same state
+    // and a real local account is not silently left unconfirmed.
+    await supabase
+      .from("candidate_profiles")
+      .update({ relevant_experience: null, is_confirmed: true })
+      .eq("owner_id", session.session.user.id);
+
     // Suppression memory outliving the row is the one thing existence-based
     // de-duplication cannot do, and it is only observable end to end: the
     // trigger fires in Postgres, the rule is read back through PostgREST, and

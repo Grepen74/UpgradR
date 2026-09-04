@@ -146,4 +146,14 @@ describe("output schemas are expressible as JSON Schema", () => {
     expect(json).toContain("factor of 12");
     expect(json).toContain("wide-open search");
   });
+
+  it("publishes what relevantExperience is for", () => {
+    // Most users will leave the structured lists empty now that they are
+    // optional, so this field is usually the only background an agent gets.
+    // If its description does not reach clients, an agent has no way to know
+    // it is evidence for scoring rather than another search filter.
+    const json = JSON.stringify(z.toJSONSchema(candidateProfileResponseSchema, { io: "output" }));
+    expect(json).toContain("relevantExperience");
+    expect(json).toContain("never a search filter");
+  });
 });

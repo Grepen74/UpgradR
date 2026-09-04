@@ -37,9 +37,12 @@ export function registerProfileTools(server: McpServer, ctx: ToolContext): void 
     {
       title: "Get candidate profile",
       description:
-        "Return the user's confirmed candidate profile: headline, summary, work experience, education, and skills. " +
+        "Return the user's confirmed candidate profile: headline, summary, relevant experience, work experience, education, and skills. " +
         "This is EVIDENCE, not intent. Use it to judge whether a role you have already found is a good fit, and to write " +
         "`matchScore` and `matchRationale` grounded in specific experience, education, or skills rather than in generalities. " +
+        "`relevantExperience` is free-text background (often the user's whole CV) and is usually the richest source here, so read it " +
+        "before falling back on the structured lists, which many users leave empty rather than re-keying data they already have in a CV. " +
+        "An empty `experiences`/`education`/`skills` therefore means 'not entered', never 'no such background'. " +
         "Do not use it to decide what to search for -- that is `get_job_search_preferences`, and the two routinely differ: " +
         "a user whose profile reads 'Senior iOS Engineer' may be deliberately looking for engineering management. " +
         "Where they conflict, the preferences win, because they are what the user wants next rather than what they have done. " +
@@ -50,7 +53,7 @@ export function registerProfileTools(server: McpServer, ctx: ToolContext): void 
     async (_input, { supabase }) => {
       const [profileRows, experiences, education, skills] = await Promise.all([
         supabase.get<CandidateProfileRow[]>("candidate_profiles", {
-          select: "headline,summary,last_reviewed_at,is_confirmed",
+          select: "headline,summary,relevant_experience,last_reviewed_at,is_confirmed",
           limit: 1,
         }),
         supabase.get<CandidateExperienceRow[]>("profile_experiences", {

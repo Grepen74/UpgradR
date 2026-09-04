@@ -68,7 +68,7 @@ accountRoute.get("/export", async (context) => {
       .maybeSingle(),
     supabase
       .from("candidate_profiles")
-      .select("headline,summary,is_confirmed,last_reviewed_at,source_import_id,created_at,updated_at")
+      .select("headline,summary,relevant_experience,is_confirmed,last_reviewed_at,source_import_id,created_at,updated_at")
       .eq("owner_id", userId)
       .maybeSingle(),
     supabase

@@ -2268,6 +2268,62 @@ input[type="radio"] {
   margin-bottom: 0;
 }
 
+/* Optional profile sections that would otherwise read as required data entry.
+   Deliberately not `.explainer`: this wraps full editors rather than a short
+   note, so it keeps normal type sizes and does not indent its contents. */
+.panel-disclosure {
+  margin: 28px 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.panel-disclosure > summary {
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0;
+}
+
+.panel-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-disclosure > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 120ms ease;
+}
+
+.panel-disclosure[open] > summary::before {
+  content: "▾";
+}
+
+.panel-disclosure > summary:hover {
+  color: var(--accent-strong);
+}
+
+.panel-disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent-mid);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* The intro sits directly above a section eyebrow, which reads as collided
+   without space beneath it. */
+.panel-disclosure > .field-hint {
+  margin: 8px 0 26px;
+  max-width: 68ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-disclosure > summary::before {
+    transition: none;
+  }
+}
+
 /* A checkbox and its label on one line, for opt-in/opt-out choices inside a
    form grid that otherwise stacks label above control. */
 .checkbox-row {

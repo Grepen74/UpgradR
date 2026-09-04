@@ -12,6 +12,28 @@ UpgradR stores job-search information, career history, contact details, notes, a
   public Supabase API directly instead of using the MCP Worker.
 - Source metadata and parser version are retained so users can understand and undo imports.
 
+### CV PDFs are parsed in the browser and never uploaded
+
+The **Populate from PDF** control on the profile page reads the file with
+`FileReader`, extracts its text, redacts contact details, and discards the file.
+The PDF itself is never transmitted, so there is no upload route, storage
+object, bucket policy, quota, or retention window associated with it — the
+strongest property here is an absence, and it should stay that way. Only the
+redacted text is submitted, as `candidate_profiles.relevant_experience`.
+
+Redaction is **unconditional** on this path, unlike the paste-a-resume import,
+which offers an opt-out checkbox. The difference is reviewability: the paste flow
+redacts invisibly at submit time, so removing something the user wanted needs
+their consent, whereas here the result lands in an editable field they read
+before saving, and anything wrongly removed can simply be typed back. That makes
+the safe default free.
+
+This matters because `relevant_experience` is exposed to authorized agents
+through `get_candidate_profile`, and it now routinely holds an entire CV. A
+home address or phone number reaching that surface would be the largest single
+disclosure the product can make. It remains subject to the confirmation gate:
+an unconfirmed profile returns `null`, not a partial value.
+
 ## Job proposals
 
 Agent-created proposals retain the MCP client, source provider, URL, discovery time, rationale, and confidence. UpgradR does not claim that externally supplied content is verified.

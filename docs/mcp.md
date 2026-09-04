@@ -229,6 +229,36 @@ proposing — with the reasoning stated in `matchRationale`.
 `notes` is free text the user wrote for you. It can introduce hard constraints
 the structured fields cannot express, so read it before searching.
 
+### `relevantExperience` is usually the only background you get
+
+`get_candidate_profile` returns `experiences`, `education`, and `skills` as
+structured lists, and it is tempting to treat an empty list as meaningful. It is
+not. Those editors are **optional** in the app, collapsed behind a disclosure,
+because requiring a user to re-key a CV they already have is the fastest way to
+get an empty profile. An empty list means "not entered", never "no such
+background".
+
+The field that carries the substance is `relevantExperience`: free-text prose,
+often the user's entire CV, either typed or extracted from a PDF. Read it first
+and fall back to the structured lists, not the other way round.
+
+Two consequences for how you use it:
+
+- **It is evidence, never a filter.** It belongs in `matchScore` and
+  `matchRationale`, quoted specifically. It is not a source of search queries —
+  that is `get_job_search_preferences`, and the profile/filters split above
+  applies to this field exactly as it does to the rest of the profile.
+- **Dates in it are prose, and prose is ambiguous.** If you need an exact
+  duration ("5+ years of Swift"), `experiences` carries real `startDate`/
+  `endDate` values and `relevantExperience` does not. When only the prose exists,
+  say what you inferred rather than presenting a derived duration as a fact.
+
+It is subject to the same confirmation gate as the rest of the profile: an
+unconfirmed profile returns `null` here, not a partial value. Contact details
+are stripped in the browser before the text is ever stored, so a CV header's
+address and phone number do not reach you — their absence is deliberate and not
+a sign of a truncated read.
+
 ### Compensation has a period, and getting it wrong is a factor of twelve
 
 `minimumCompensation` is a gross pre-tax floor in `compensationCurrency`,

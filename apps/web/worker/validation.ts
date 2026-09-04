@@ -80,6 +80,7 @@ export const oauthScopeUpdateSchema = z.object({
 export const profileUpdateSchema = candidateProfileSchema.pick({
   headline: true,
   summary: true,
+  relevantExperience: true,
 });
 
 // Manual editing of the structured profile. These reuse the shared contract's

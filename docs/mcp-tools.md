@@ -22,7 +22,7 @@ See [mcp.md](./mcp.md) for authorization, scopes, and how to connect. Every tool
 
 | Tool | Scope | Summary |
 |---|---|---|
-| [`get_candidate_profile`](#get_candidate_profile) | `profile:read` | Return the user's confirmed candidate profile: headline, summary, work experience, education, and skills. |
+| [`get_candidate_profile`](#get_candidate_profile) | `profile:read` | Return the user's confirmed candidate profile: headline, summary, relevant experience, work experience, education, and skills. |
 | [`get_job_search_preferences`](#get_job_search_preferences) | `profile:read` | Return the user's search brief. |
 | [`search_existing_opportunities`](#search_existing_opportunities) | `opportunities:read` | Search the user's already-tracked applications by title/company/location/source URL, to check for an existing match before proposing a new one. |
 | [`list_known_opportunity_keys`](#list_known_opportunity_keys) | `opportunities:read` | Return the de-duplication keys for every opportunity the user already tracks, including closed ones, so an agent can filter its candidates locally before calling create_job_proposals. |
@@ -53,7 +53,7 @@ Named workflows that sequence the tools above. A client surfaces them as slash c
 
 **Get candidate profile**
 
-Return the user's confirmed candidate profile: headline, summary, work experience, education, and skills. This is EVIDENCE, not intent. Use it to judge whether a role you have already found is a good fit, and to write `matchScore` and `matchRationale` grounded in specific experience, education, or skills rather than in generalities. Do not use it to decide what to search for -- that is `get_job_search_preferences`, and the two routinely differ: a user whose profile reads 'Senior iOS Engineer' may be deliberately looking for engineering management. Where they conflict, the preferences win, because they are what the user wants next rather than what they have done. Unconfirmed or imported-but-unreviewed facts are never returned, so treat everything here as user-confirmed.
+Return the user's confirmed candidate profile: headline, summary, relevant experience, work experience, education, and skills. This is EVIDENCE, not intent. Use it to judge whether a role you have already found is a good fit, and to write `matchScore` and `matchRationale` grounded in specific experience, education, or skills rather than in generalities. `relevantExperience` is free-text background (often the user's whole CV) and is usually the richest source here, so read it before falling back on the structured lists, which many users leave empty rather than re-keying data they already have in a CV. An empty `experiences`/`education`/`skills` therefore means 'not entered', never 'no such background'. Do not use it to decide what to search for -- that is `get_job_search_preferences`, and the two routinely differ: a user whose profile reads 'Senior iOS Engineer' may be deliberately looking for engineering management. Where they conflict, the preferences win, because they are what the user wants next rather than what they have done. Unconfirmed or imported-but-unreviewed facts are never returned, so treat everything here as user-confirmed.
 
 Requires scope: `profile:read` (plus `mcp`).
 
@@ -65,6 +65,7 @@ Returns:
 |---|---|---|---|
 | `headline` | string \| null | yes | How the user describes their current position. |
 | `summary` | string \| null | yes | Career narrative in the user's own words. |
+| `relevantExperience` | string \| null | yes | Free-text background evidence: roles, projects, technologies, and dates, either written by the user or extracted from their CV. Usually the richest source for judging fit — quote from it in matchRationale. It is evidence about the candidate, never a search filter. |
 | `lastReviewedAt` | string \| null | yes | When the user last confirmed this profile is current. |
 | `experiences` | array of object | yes | Confirmed employment history, most relevant first. Cite it in matchRationale. |
 | `experiences[].company` | string | yes |  |
