@@ -201,3 +201,59 @@ describe("street addresses in name-then-number order", () => {
     expect(result.text).toContain("Senior iOS engineer.");
   });
 });
+
+describe("contact blocks laid out in a narrow column", () => {
+    // LinkedIn's own "Save to PDF" export puts contact details in a narrow
+    // left sidebar, which wraps a profile URL mid-token. Matching stops at the
+    // newline, so only the first half was removed and the remainder -- which
+    // still identifies the person -- survived into text agents can read.
+    const wrapped = "Contact\n+46 70 123 45 67 (Mobile)\njohn@example.com\nwww.linkedin.com/in/john-\nahlinder-9306235 (LinkedIn)\n\nTop Skills\nSwift";
+
+    it("removes a profile URL that wraps across a line break", () => {
+      const result = stripContactDetails(wrapped);
+      expect(result.text).not.toContain("ahlinder-9306235");
+      expect(result.text).not.toContain("linkedin.com");
+    });
+
+    it("removes the labels left behind once their values are gone", () => {
+      const result = stripContactDetails(wrapped);
+      expect(result.text).not.toContain("(Mobile)");
+      expect(result.text).not.toContain("(LinkedIn)");
+    });
+
+    it("drops the Contact heading once its block is empty", () => {
+      expect(stripContactDetails(wrapped).text).not.toMatch(/^Contact/);
+    });
+
+    it("keeps the rest of the sidebar, which is real matching context", () => {
+      const result = stripContactDetails(wrapped);
+      expect(result.text).toContain("Top Skills");
+      expect(result.text).toContain("Swift");
+    });
+
+    it("keeps a Contact heading that still has content under it", () => {
+      const text = "Contact\nAvailable from June.\n";
+      expect(stripContactDetails(text).text).toContain("Contact");
+    });
+
+    it("does not join ordinary lines that merely end in a hyphen", () => {
+      const text = "Built a cross-\nfunctional team.";
+      expect(stripContactDetails(text).text).toContain("cross-\nfunctional");
+    });
+
+    it("does not treat a parenthetical in prose as an orphaned label", () => {
+      const text = "Worked remotely (Mobile) across three teams.";
+      expect(stripContactDetails(text).text).toContain("(Mobile)");
+    });
+
+    it("does not backtrack catastrophically on pathological input", () => {
+      // Allowing a URL to continue across a line break introduces a nested
+      // quantifier, which is where regex blowups come from. Each repetition
+      // has to consume a newline, so the cost stays bounded -- asserted rather
+      // than assumed, because the input is a file the user chose.
+      const nasty = `www.${"a-".repeat(4000)}\n${"b-".repeat(4000)}`;
+      const start = performance.now();
+      findContactDetails(nasty);
+      expect(performance.now() - start).toBeLessThan(1000);
+    });
+});

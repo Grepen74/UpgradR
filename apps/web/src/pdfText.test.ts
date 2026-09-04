@@ -91,3 +91,74 @@ describe("extraction feeds redaction", () => {
     expect(text).toContain("100 000 000 users");
   });
 });
+
+describe("a LinkedIn-style export with a narrow contact sidebar", () => {
+  /**
+   * Built here rather than committed so the wrap is visible in the test.
+   *
+   * LinkedIn's "Save to PDF" renders contact details in a sidebar roughly
+   * twenty characters wide, which breaks a profile URL mid-slug. Reported from
+   * a real export, where the redacted result still began
+   * "Contact / (Mobile) / ahlinder-9306235 (LinkedIn)".
+   */
+  function sidebarPdf(): File {
+    const lines = [
+      "Contact",
+      "+46 70 123 45 67 (Mobile)",
+      "john@example.com",
+      "www.linkedin.com/in/john-",
+      "ahlinder-9306235 (LinkedIn)",
+      "",
+      "Top Skills",
+      "Swift",
+      "SwiftUI",
+      "",
+      "Summary",
+      "Senior iOS engineer with 9 years of experience.",
+    ];
+    const text = lines
+      .map((line, index) => `BT /F1 12 Tf 40 ${740 - index * 18} Td (${line}) Tj ET`)
+      .join("\n");
+    const source = [
+      "%PDF-1.4",
+      "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+      "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+      "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]" +
+        "/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj",
+      "4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj",
+      `5 0 obj<</Length ${text.length}>>stream\n${text}\nendstream endobj`,
+      "trailer<</Root 1 0 R>>",
+    ].join("\n");
+    return new File([new TextEncoder().encode(source)], "Profile.pdf", {
+      type: "application/pdf",
+    });
+  }
+
+  it("leaves no identifying remainder of a URL broken across lines", async () => {
+    const { text } = stripContactDetails(await extractPdfText(sidebarPdf()));
+
+    // The half-stripped case: matching that stops at the newline removes
+    // "www.linkedin.com/in/john-" and leaves the rest, which looks redacted
+    // and is not.
+    expect(text).not.toContain("ahlinder-9306235");
+    expect(text).not.toContain("linkedin.com");
+    expect(text).not.toContain("john@example.com");
+    expect(text).not.toContain("70 123 45 67");
+  });
+
+  it("leaves no stranded labels or empty headings", async () => {
+    const { text } = stripContactDetails(await extractPdfText(sidebarPdf()));
+
+    expect(text).not.toContain("(Mobile)");
+    expect(text).not.toContain("(LinkedIn)");
+    expect(text.startsWith("Contact")).toBe(false);
+  });
+
+  it("keeps everything that is real matching context", async () => {
+    const { text } = stripContactDetails(await extractPdfText(sidebarPdf()));
+
+    expect(text).toContain("Top Skills");
+    expect(text).toContain("Swift");
+    expect(text).toContain("Senior iOS engineer with 9 years of experience.");
+  });
+});

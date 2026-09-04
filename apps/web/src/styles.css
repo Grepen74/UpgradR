@@ -190,6 +190,14 @@ p {
   backdrop-filter: blur(20px);
 }
 
+/* The profile page is the first view to stack two panels, and without this
+   "Search filters" butts straight against the card above it. Written as a
+   sibling rule rather than a margin on the profile panel so any future pair
+   is spaced the same way. */
+.panel + .panel {
+  margin-top: clamp(20px, 2.5vw, 32px);
+}
+
 .sign-in-card {
   display: grid;
   gap: 14px;

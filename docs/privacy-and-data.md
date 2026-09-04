@@ -34,6 +34,25 @@ home address or phone number reaching that surface would be the largest single
 disclosure the product can make. It remains subject to the confirmation gate:
 an unconfirmed profile returns `null`, not a partial value.
 
+### Contact details are matched across line breaks
+
+Narrow layouts wrap a profile URL mid-token — LinkedIn's own PDF export puts
+contact details in a sidebar about twenty characters wide, producing
+`www.linkedin.com/in/john-` on one line and `ahlinder-9306235` on the next.
+Matching that stopped at the newline removed the first half and left a
+remainder that still identified the person, in text that now *looked* redacted.
+A partial redaction is worse than none, because nobody re-reads it.
+
+Both URL patterns therefore continue onto the following line, but only when the
+current line ends in `-` or `/`, which is what keeps them from swallowing the
+next line of ordinary prose. Labels stranded by a removal (`(Mobile)`,
+`(LinkedIn)`) and a `Contact` heading whose block is now empty are cleaned up
+as well — in each case only when nothing else survives, so a parenthetical in a
+sentence and a heading with real content underneath are left alone.
+
+What deliberately survives is the rest of a CV sidebar: skills, languages, and
+certifications are matching context, not contact details.
+
 ## Job proposals
 
 Agent-created proposals retain the MCP client, source provider, URL, discovery time, rationale, and confidence. UpgradR does not claim that externally supplied content is verified.

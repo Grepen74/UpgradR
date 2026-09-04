@@ -38,10 +38,24 @@ const EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 // not contact details — but the handful of hosts that are *only* ever personal
 // profiles are matched even without a scheme, because "linkedin.com/in/name"
 // is how almost everyone writes it.
-const URL = /\b(?:https?:\/\/|www\.)[^\s<>()[\]{}]+/gi;
+//
+// `WRAPPED` lets a URL continue onto the next line, but only when the current
+// line ends in `-` or `/`. Narrow columns — LinkedIn's own PDF export puts
+// contact details in a sidebar barely twenty characters wide — wrap a profile
+// URL mid-slug, and matching that stops at the newline strips
+// "www.linkedin.com/in/john-" while leaving "ahlinder-9306235" behind. The
+// remainder still identifies the person, so a partial match is worse than no
+// match: it looks redacted and is not. Requiring the `-` or `/` is what keeps
+// this from swallowing the following line of an ordinary sentence.
+const URL_CHARS = String.raw`[^\s<>()[\]{}]`;
+const WRAPPED = String.raw`(?:${URL_CHARS}*[-/]\r?\n)*${URL_CHARS}+`;
 
-const PROFILE_HOST =
-  /\b(?:[a-z0-9-]+\.)?(?:linkedin\.com|github\.com|gitlab\.com|twitter\.com|x\.com|medium\.com|behance\.net|dribbble\.com|stackoverflow\.com)\/[^\s<>()[\]{}]+/gi;
+const URL = new RegExp(String.raw`\b(?:https?:\/\/|www\.)${WRAPPED}`, "gi");
+
+const PROFILE_HOST = new RegExp(
+  String.raw`\b(?:[a-z0-9-]+\.)?(?:linkedin\.com|github\.com|gitlab\.com|twitter\.com|x\.com|medium\.com|behance\.net|dribbble\.com|stackoverflow\.com)\/${WRAPPED}`,
+  "gi",
+);
 
 /**
  * Phone-like runs of digits and separators.
@@ -177,6 +191,45 @@ export function findContactDetails(text: string): ContactDetailMatch[] {
   return ordered;
 }
 
+const NOISE_LINE = /^[\s|·•,;:\-–—/]*$/;
+
+/**
+ * A parenthetical that labels a contact detail rather than saying anything.
+ *
+ * Resume generators write "+46 70 123 45 67 (Mobile)" and
+ * "www.linkedin.com/in/name (LinkedIn)". Removing the value leaves the label
+ * stranded on its own line, which reads as damage rather than as redaction.
+ * The label is only dropped when nothing else survives on the line, so
+ * "Worked remotely (Mobile) across three teams" keeps it.
+ */
+const ORPHANED_LABEL =
+  /^[\s|·•,;:\-–—/]*\((?:mobile|home|work|cell|phone|tel|telephone|linkedin|github|gitlab|twitter|x|medium|personal|email|e-mail|direct)\)[\s|·•,;:\-–—/]*$/i;
+
+const CONTACT_HEADING = /^[\s|·•]*contact(?:\s+(?:details|information|info))?[\s:|·•]*$/i;
+
+/**
+ * Drops a "Contact" heading whose entire block was redacted away.
+ *
+ * A heading introducing nothing is worse than no heading, but one that still
+ * has content under it may be a genuine sentence ("Contact / Available from
+ * June"), so the block is checked rather than the heading alone.
+ */
+function dropEmptyContactHeadings(lines: readonly string[]): string[] {
+  return lines.filter((line, index) => {
+    if (!CONTACT_HEADING.test(line)) {
+      return true;
+    }
+    const next = lines.slice(index + 1).find((candidate) => !NOISE_LINE.test(candidate));
+    return next !== undefined && !CONTACT_HEADING.test(next) && isBlockContent(lines, index);
+  });
+}
+
+/** True when the heading at `index` is followed by content before a blank line. */
+function isBlockContent(lines: readonly string[], index: number): boolean {
+  const next = lines[index + 1];
+  return next !== undefined && !NOISE_LINE.test(next);
+}
+
 /**
  * Removes every detected contact detail from `text`.
  *
@@ -198,16 +251,18 @@ export function stripContactDetails(text: string): ContactRedactionResult {
   }
   result += text.slice(cursor);
 
-  const cleaned = result
-    // Lines that held nothing but contact details are now blank or punctuation.
+  const withoutLabels = result
     .split("\n")
+    .filter((line) => !ORPHANED_LABEL.test(line));
+
+  const cleaned = dropEmptyContactHeadings(withoutLabels)
+    // Lines that held nothing but contact details are now blank or punctuation.
     .filter((line, index, lines) => {
-      const isNoise = /^[\s|·•,;:\-–—/]*$/.test(line);
-      if (!isNoise) {
+      if (!NOISE_LINE.test(line)) {
         return true;
       }
       // Keep a single blank line as a paragraph break, drop runs of them.
-      return index > 0 && !/^[\s|·•,;:\-–—/]*$/.test(lines[index - 1] ?? "");
+      return index > 0 && !NOISE_LINE.test(lines[index - 1] ?? "");
     })
     .join("\n")
     .replace(/[ \t]{2,}/g, " ")
