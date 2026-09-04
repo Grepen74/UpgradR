@@ -114,7 +114,13 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
       );
 
       sections.push(
-        "**4b. Score on evidence.**\nOnly now bring in the profile, and only for candidates that survived 4a. Ground `matchScore` and `matchRationale` in specific experience, education, and skills rather than restating the job ad. `relevantExperience` is usually the richest source and often the *only* one — the structured lists are optional in the app, so an empty `experiences`/`education`/`skills` means \"not entered\", never \"no such background\", and must not be scored as a gap. Be honest about real gaps — this is decision support for a real job search, not a sales pitch, and a short specific rationale is worth more than a high score.\nA weak profile match is a low score. A failed preference is not a score at all: it was already dropped in 4a.",
+        "**4b. Score on evidence.**\nOnly now bring in the profile, and only for candidates that survived 4a. Ground `matchScore` and `matchRationale` in specific experience, education, and skills rather than restating the job ad. `relevantExperience` is usually the richest source and often the *only* one — the structured lists are optional in the app, so an empty `experiences`/`education`/`skills` means \"not entered\", never \"no such background\", and must not be scored as a gap. Be honest about real gaps — this is decision support for a real job search, not a sales pitch, and a short specific rationale is worth more than a high score.\nA weak profile match is a low score. A failed preference is not a score at all: it was already dropped in 4a.\n" +
+          "`matchScore` is your judgment call, not a computed metric, so anchor it to these bands rather than picking a number that merely *feels* right — the point is that the same evidence should land in the same band regardless of which run or which agent is scoring it:\n" +
+          "- **90-100:** every requirement the posting states is met, with specific evidence cited for each.\n" +
+          "- **70-89:** the core requirements are met with cited evidence; at most one or two secondary requirements are unmet or unverifiable.\n" +
+          "- **50-69:** plausible for the role, but with a real, named gap in required experience, seniority, or domain — not just a stretch on a nice-to-have.\n" +
+          "- **Below 50:** speculative — you are proposing it on directional or adjacent fit rather than on matched evidence. Still propose it if it survived 4a; just say so plainly in `matchRationale` rather than inflating the number.\n" +
+          "There is no minimum score to be proposed at all: a low score is the honest output of this step, not a reason to withhold the candidate. `strengths` and `gaps` carry the specifics; `matchScore` only needs to place the candidate in the right band.",
       );
 
       sections.push(

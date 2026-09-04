@@ -107,6 +107,23 @@ describe("MCP prompts", () => {
       expect(text).toContain("cannot be overridden");
     });
 
+    // Anchors matchScore to concrete bands so the same evidence lands in the
+    // same range across different runs and agents, instead of a bare "0-100,
+    // use your judgement" that produces incomparable scores.
+    it("anchors matchScore to evidence-based bands instead of a bare 0-100 scale", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("90-100:");
+      expect(text).toContain("70-89:");
+      expect(text).toContain("50-69:");
+      expect(text).toContain("Below 50:");
+      expect(text).toContain("not a computed metric");
+    });
+
+    it("says there is no minimum score required to propose a candidate", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("no minimum score to be proposed at all");
+    });
+
     it("applies an optional focus without replacing saved preferences", () => {
       const text = render(FULL, "weekly_job_search", { focus: "remote only" });
       expect(text).toContain("remote only");
