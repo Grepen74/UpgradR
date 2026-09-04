@@ -14,3 +14,10 @@ export {
   type ImportedProfileSummary,
 } from "./linkedin/index";
 export { importResumeText, type ResumeImportPreview } from "./resume/textImport";
+export {
+  findContactDetails,
+  stripContactDetails,
+  type ContactDetailKind,
+  type ContactDetailMatch,
+  type ContactRedactionResult,
+} from "./resume/contactDetails";

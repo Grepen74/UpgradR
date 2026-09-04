@@ -104,3 +104,22 @@ npx playwright install chromium
 npm run test --workspace @upgradr/e2e
 ```
 
+Two kinds of browser test live there:
+
+- The **signed-out smoke test** only needs the Worker to boot, so it runs
+  anywhere.
+- The **authenticated specs** (board ordering) drive a real sign-in. They need
+  `supabase start`, because they create a throwaway `@example.com` user through
+  the admin API and collect its magic link from Mailpit.
+
+`playwright.config.ts` asks the Supabase CLI for the local URLs and keys when
+the run starts. If the stack is not running -- or in CI -- the authenticated
+specs skip themselves and the smoke test still runs, so `npm test` never fails
+purely because Docker is stopped. Keys are read at run time rather than
+committed, so nothing key-shaped lives in the repository.
+
+Each authenticated spec creates its own user and deletes it afterwards, which
+cascades to the rows it seeded. Leaving your own local data untouched is
+deliberate: these tests should be safe to run against a database you are also
+developing against.
+

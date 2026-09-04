@@ -1,4 +1,11 @@
-import type { ApplicationStatus, McpScopeDescriptor } from "@upgradr/contracts";
+import type {
+  ApplicationStatus,
+  CompensationPeriod,
+  CreateSuppressionInput,
+  McpScopeDescriptor,
+  SuppressionKeyType,
+  SuppressionSource,
+} from "@upgradr/contracts";
 import type { DocumentKind, DocumentLinkRole } from "../shared/documents";
 import type {
   LinkedInImportPreviewPayload,
@@ -28,9 +35,21 @@ export type ApplicationSummary = {
   match_score: number | null;
   confidence: number | null;
   mcp_client_id: string | null;
+  board_position: number;
   created_at: string;
   updated_at: string;
   labels: LabelSummary[];
+};
+
+export type SuppressionSummary = {
+  id: string;
+  key_type: SuppressionKeyType;
+  key_value: string;
+  reason: string | null;
+  source: SuppressionSource;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type LabelSummary = {
@@ -57,6 +76,7 @@ export type MatchAssessment = {
   gaps: string[];
   confidence: number | null;
   assessed_by: string | null;
+  mcp_client_id: string | null;
   created_at: string;
 };
 
@@ -68,6 +88,7 @@ export type ApplicationDetail = ApplicationSummary & {
   compensation_min: number | null;
   compensation_max: number | null;
   compensation_currency: string | null;
+  compensation_period: CompensationPeriod | null;
   match_rationale: string | null;
   strengths: string[];
   gaps: string[];
@@ -101,11 +122,47 @@ export type CandidateProfile = {
   last_reviewed_at: string | null;
 };
 
+export type ProfileExperience = {
+  id: string;
+  company: string;
+  title: string;
+  description: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_current: boolean;
+  is_confirmed: boolean;
+  sort_order: number;
+};
+
+export type ProfileEducation = {
+  id: string;
+  institution: string;
+  degree: string | null;
+  field_of_study: string | null;
+  is_confirmed: boolean;
+  sort_order: number;
+};
+
+export type ProfileSkill = {
+  id: string;
+  name: string;
+  evidence: string | null;
+  is_confirmed: boolean;
+};
+
+export type ProfileDetail = {
+  profile: CandidateProfile;
+  experiences: ProfileExperience[];
+  education: ProfileEducation[];
+  skills: ProfileSkill[];
+};
+
 export type JobSearchPreferences = {
   targetRoles: string[];
   locations: string[];
   remotePolicy: "onsite" | "hybrid" | "remote" | "flexible";
   minimumCompensation: number | null;
+  minimumCompensationPeriod: CompensationPeriod;
   compensationCurrency: string | null;
   industries: string[];
   excludedCompanies: string[];
@@ -414,6 +471,16 @@ export const api = {
         body: JSON.stringify({ status, ...(note ? { note } : {}) }),
       },
     ),
+  // Applies a board drag. `orderedIds` is the destination column's complete
+  // order after the drop, including the moved card.
+  moveApplicationOnBoard: (id: string, status: ApplicationStatus, orderedIds: string[]) =>
+    apiRequest<{ application: ApplicationSummary }>(
+      `/api/applications/${encodeURIComponent(id)}/board-position`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status, orderedIds }),
+      },
+    ),
   getApplicationDetail: (id: string) =>
     apiRequest<{
       application: ApplicationDetail;
@@ -448,11 +515,52 @@ export const api = {
     apiRequest<{ deleted: true }>(`/api/labels/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
-  getProfile: () => apiRequest<{ profile: CandidateProfile }>("/api/profile"),
+  getSuppressions: () =>
+    apiRequest<{ suppressions: SuppressionSummary[] }>("/api/suppressions"),
+  createSuppression: (input: CreateSuppressionInput) =>
+    apiRequest<{ suppression: SuppressionSummary }>("/api/suppressions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteSuppression: (id: string) =>
+    apiRequest<{ removed: true }>(`/api/suppressions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  getProfile: () => apiRequest<ProfileDetail>("/api/profile"),
   updateProfile: (input: { headline: string | null; summary: string | null }) =>
     apiRequest<{ profile: CandidateProfile }>("/api/profile", {
       method: "PATCH",
       body: JSON.stringify(input),
+    }),
+  addProfileExperience: (input: {
+    company: string;
+    title: string;
+    description: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    isCurrent: boolean;
+  }) =>
+    apiRequest<{ entry: ProfileExperience }>("/api/profile/experiences", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  addProfileEducation: (input: {
+    institution: string;
+    degree: string | null;
+    fieldOfStudy: string | null;
+  }) =>
+    apiRequest<{ entry: ProfileEducation }>("/api/profile/education", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  addProfileSkill: (input: { name: string; evidence: string | null }) =>
+    apiRequest<{ entry: ProfileSkill }>("/api/profile/skills", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  deleteProfileEntry: (kind: "experiences" | "education" | "skills", id: string) =>
+    apiRequest<{ deleted: true }>(`/api/profile/${kind}/${encodeURIComponent(id)}`, {
+      method: "DELETE",
     }),
   getProfileImports: () =>
     apiRequest<{ imports: ProfileImportRecord[] }>("/api/profile/imports"),

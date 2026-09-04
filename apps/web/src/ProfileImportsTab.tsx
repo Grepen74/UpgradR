@@ -1,5 +1,11 @@
 import type { LinkedInFileKind } from "@upgradr/profile-import";
-import { importLinkedInExport, importResumeText } from "@upgradr/profile-import";
+import {
+  findContactDetails,
+  importLinkedInExport,
+  importResumeText,
+  stripContactDetails,
+  type ContactDetailMatch,
+} from "@upgradr/profile-import";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { api, type ProfileImportRecord } from "./api";
@@ -251,10 +257,22 @@ function ResumeImportPanel({
   const [preview, setPreview] = useState<ResumeImportPreviewPayload>();
   const [localMessage, setLocalMessage] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  // Contact details found in the current text. Removal is offered rather than
+  // applied, because a heuristic sure enough to delete text unasked would also
+  // be sure enough to delete something that mattered.
+  const [contactMatches, setContactMatches] = useState<ContactDetailMatch[]>([]);
+  const [stripContacts, setStripContacts] = useState(true);
 
   async function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) {
+      return;
+    }
+    if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") {
+      setLocalMessage(
+        "PDF resumes cannot be read yet. Open the PDF, copy the text, and paste it below.",
+      );
+      event.target.value = "";
       return;
     }
     const content = await file.text();
@@ -267,8 +285,10 @@ function ResumeImportPanel({
     setLocalMessage(undefined);
     if (content.trim() === "") {
       setPreview(undefined);
+      setContactMatches([]);
       return;
     }
+    setContactMatches(findContactDetails(content));
     const result = importResumeText(content, sourceFileName ?? null);
     setPreview(buildResumePreviewPayload(result));
   }
@@ -288,16 +308,32 @@ function ResumeImportPanel({
     setLocalMessage(undefined);
     setGlobalMessage(undefined);
     try {
+      // Redact at submit time, not while typing, so the textarea keeps showing
+      // what the user actually pasted and they can uncheck the box and resubmit.
+      const outgoing =
+        stripContacts && contactMatches.length > 0
+          ? buildResumePreviewPayload(
+              importResumeText(stripContactDetails(text).text, fileName ?? null),
+            )
+          : preview;
+
       await api.createProfileImport({
         source: "resume",
         sourceLabel: fileName ?? "Pasted resume text",
-        preview,
+        preview: outgoing,
       });
       setPreview(undefined);
       setText("");
       setFileName(undefined);
+      setContactMatches([]);
       await onImported();
-      setGlobalMessage("Resume saved for review.");
+      setGlobalMessage(
+        stripContacts && contactMatches.length > 0
+          ? `Resume saved for review, with ${contactMatches.length} contact detail${
+              contactMatches.length === 1 ? "" : "s"
+            } removed.`
+          : "Resume saved for review.",
+      );
     } catch (error) {
       setLocalMessage(error instanceof Error ? error.message : "Unable to save this import.");
     } finally {
@@ -311,6 +347,10 @@ function ResumeImportPanel({
         <div>
           <p className="eyebrow">Resume text</p>
           <h3>Upload a plain-text resume or paste it directly</h3>
+          <p>
+            PDF and Word files cannot be read yet — open the file, copy the text, and paste it
+            below. Contact details are detected and offered for removal either way.
+          </p>
         </div>
       </div>
 
@@ -319,7 +359,7 @@ function ResumeImportPanel({
         <input id="resumeFile" type="file" accept=".txt,text/plain" onChange={(event) => void handleFile(event)} />
       </label>
 
-      <div>
+      <div className="stacked-form">
         <label htmlFor="resumeText">Or paste resume text</label>
         <textarea
           id="resumeText"
@@ -331,6 +371,35 @@ function ResumeImportPanel({
       </div>
 
       {localMessage ? <StatusMessage>{localMessage}</StatusMessage> : null}
+
+      {contactMatches.length > 0 ? (
+        <section className="detail-section">
+          <p className="eyebrow">Contact details found</p>
+          <p>
+            Your profile summary is readable by any agent you authorize. These look like personal
+            contact details, which are not useful for matching.
+          </p>
+          <ul className="entity-list">
+            {contactMatches.map((match) => (
+              <li className="entity-item" key={`${match.kind}-${match.index}`}>
+                <div>
+                  <strong>{match.value}</strong>
+                  <span>{match.kind}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <label className="checkbox-row" htmlFor="stripContacts">
+            <input
+              id="stripContacts"
+              type="checkbox"
+              checked={stripContacts}
+              onChange={(event) => setStripContacts(event.currentTarget.checked)}
+            />
+            <span>Remove these before saving</span>
+          </label>
+        </section>
+      ) : null}
 
       {preview ? (
         <ImportPreviewSummary

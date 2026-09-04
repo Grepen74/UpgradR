@@ -48,6 +48,16 @@ export const statusTransitionSchema = z.object({
   note: z.string().trim().max(2_000).optional(),
 });
 
+// A board drag reports where the card landed: the column's status and the
+// column's complete new order. The client already has that list rendered, so
+// sending it avoids a read-then-write race against the user's own next drag.
+// The cap matches the 100-row board query -- a longer list could only come
+// from a client that saw rows this route never served.
+export const boardMoveSchema = z.object({
+  status: applicationStatusSchema,
+  orderedIds: z.array(z.uuid()).min(1).max(100),
+});
+
 export const oauthDecisionSchema = z.object({
   authorizationId: z.string().min(1).max(2_000),
   decision: z.enum(["approve", "deny"]),
@@ -71,6 +81,25 @@ export const profileUpdateSchema = candidateProfileSchema.pick({
   headline: true,
   summary: true,
 });
+
+// Manual editing of the structured profile. These reuse the shared contract's
+// per-entry shapes so a hand-typed row and an imported one are validated
+// identically -- the import path and this path write the same tables.
+const experienceEntry = candidateProfileSchema.shape.experiences.element;
+const educationEntry = candidateProfileSchema.shape.education.element;
+const skillEntry = candidateProfileSchema.shape.skills.element;
+
+export const profileExperienceWriteSchema = experienceEntry.refine(
+  (value) => !value.isCurrent || value.endDate === null,
+  { message: "A current role cannot have an end date.", path: ["endDate"] },
+).refine(
+  (value) =>
+    value.startDate === null || value.endDate === null || value.endDate >= value.startDate,
+  { message: "End date must not precede the start date.", path: ["endDate"] },
+);
+
+export const profileEducationWriteSchema = educationEntry;
+export const profileSkillWriteSchema = skillEntry;
 
 // Selections passed to POST /api/profile/imports/:id/confirm, forwarded
 // directly to public.confirm_profile_import() as its p_experience_indexes /

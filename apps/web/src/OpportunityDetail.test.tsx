@@ -43,7 +43,13 @@ const baseApplication = {
 };
 
 function mockDetailFetch(
-  overrides: { labels?: unknown[]; posts?: (url: string, body: string) => void } = {},
+  overrides: {
+    labels?: unknown[];
+    posts?: (url: string, body: string) => void;
+    matchAssessments?: unknown[];
+    suppressions?: unknown[];
+    application?: Record<string, unknown>;
+  } = {},
 ) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = requestUrl(input);
@@ -60,7 +66,11 @@ function mockDetailFetch(
       return jsonResponse({ detached: true });
     }
     if (url.includes("/api/applications/app-1") && method === "GET") {
-      return jsonResponse({ application: baseApplication, statusEvents: [], matchAssessments: [] });
+      return jsonResponse({
+        application: { ...baseApplication, ...(overrides.application ?? {}) },
+        statusEvents: [],
+        matchAssessments: overrides.matchAssessments ?? [],
+      });
     }
     if (url.includes("/api/applications/app-1/status") && method === "POST") {
       return jsonResponse({ application: baseApplication });
@@ -92,6 +102,15 @@ function mockDetailFetch(
     if (url.includes("/api/labels")) {
       return jsonResponse({ labels: overrides.labels ?? [] });
     }
+    if (url.includes("/api/suppressions") && method === "POST") {
+      return jsonResponse({ suppression: { id: "sup-new" } }, { status: 201 });
+    }
+    if (url.includes("/api/suppressions") && method === "DELETE") {
+      return jsonResponse({ deleted: true });
+    }
+    if (url.includes("/api/suppressions")) {
+      return jsonResponse({ suppressions: overrides.suppressions ?? [] });
+    }
     throw new Error(`Unexpected request to ${url}`);
   });
 }
@@ -114,6 +133,52 @@ describe("OpportunityDetail", () => {
     expect(screen.getByText("Strong fit on backend experience.")).toBeVisible();
     expect(screen.getByText("Dream job")).toBeVisible();
     expect(screen.getByText("applied")).toBeVisible();
+  });
+
+  it("explains that the score is the agent's estimate, not an UpgradR calculation", async () => {
+    mockDetailFetch();
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/82% match/)).toBeVisible();
+    });
+
+    // Confidence is about the extracted facts, not about the match; labelling
+    // it as a bare percentage next to the score implied they were comparable.
+    expect(screen.getByText(/70% confidence in the extracted facts/)).toBeVisible();
+
+    const explainer = screen.getByText("What do these numbers mean?");
+    expect(explainer).toBeVisible();
+    fireEvent.click(explainer);
+
+    expect(
+      screen.getByText(/UpgradR does not calculate it and does not verify it/),
+    ).toBeVisible();
+  });
+
+  it("attributes a score to the agent that produced it", async () => {
+    mockDetailFetch({
+      matchAssessments: [
+        {
+          id: "assessment-1",
+          score: 82,
+          rationale: null,
+          strengths: [],
+          gaps: [],
+          confidence: 0.7,
+          assessed_by: "agent",
+          mcp_client_id: "copilot-cli",
+          created_at: "2026-09-01T10:00:00+00:00",
+        },
+      ],
+    });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Scored by copilot-cli/)).toBeVisible();
+    });
   });
 
   it("calls onClose when 'Back to board' is activated", async () => {
@@ -247,6 +312,7 @@ describe("OpportunityDetail", () => {
       if (url.includes("/api/contacts")) return jsonResponse({ contacts: [] });
       if (url.includes("/api/activity")) return jsonResponse({ events: [] });
       if (url.includes("/api/labels")) return jsonResponse({ labels: [] });
+      if (url.includes("/api/suppressions")) return jsonResponse({ suppressions: [] });
       throw new Error(`Unexpected request to ${url}`);
     });
 
@@ -285,6 +351,7 @@ describe("OpportunityDetail", () => {
       if (url.includes("/api/contacts")) return jsonResponse({ contacts: [] });
       if (url.includes("/api/activity")) return jsonResponse({ events: [] });
       if (url.includes("/api/labels")) return jsonResponse({ labels: [] });
+      if (url.includes("/api/suppressions")) return jsonResponse({ suppressions: [] });
       throw new Error(`Unexpected request to ${url}`);
     });
 
@@ -304,5 +371,67 @@ describe("OpportunityDetail", () => {
     });
     const statusPost = posts.find((entry) => entry.url.endsWith("/app-1/status"));
     expect(JSON.parse(statusPost?.body ?? "{}")).toMatchObject({ status: "shortlisted" });
+  });
+
+  it("offers to mute the company, and sends the name unnormalized", async () => {
+    const posts: Array<{ url: string; body: string }> = [];
+    mockDetailFetch({ posts: (url, body) => posts.push({ url, body }) });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Mute Acme" })).toBeVisible();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mute Acme" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm mute Acme" }));
+
+    await waitFor(() => {
+      const call = posts.find((entry) => entry.url.includes("/api/suppressions"));
+      expect(call).toBeDefined();
+      // The server normalizes; sending a pre-normalized token from here would
+      // mean two places had to agree on the algorithm.
+      expect(JSON.parse(call!.body)).toMatchObject({ keyType: "company", keyValue: "Acme" });
+    });
+  });
+
+  it("matches an existing rule through the same normalization the database uses", async () => {
+    // "Acme" tokenizes to "acme", which is what a rule created from "Acme, Inc."
+    // would not match -- but a rule stored as "acme" must, or the user would be
+    // offered a mute they already have.
+    mockDetailFetch({
+      suppressions: [
+        {
+          id: "sup-1",
+          key_type: "company",
+          key_value: "acme",
+          reason: null,
+          source: "manual",
+          expires_at: "2027-01-01T00:00:00.000Z",
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Unmute Acme" })).toBeVisible();
+    });
+    expect(screen.queryByRole("button", { name: "Mute Acme" })).toBeNull();
+  });
+
+  it("hides the mute control when the opportunity names no company", async () => {
+    // A company rule keyed on an empty string would match every unnamed
+    // opportunity the user ever adds, so there is nothing coherent to offer.
+    mockDetailFetch({ application: { company_name: "  " } });
+
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Senior Engineer" })).toBeVisible();
+    });
+    expect(screen.queryByRole("button", { name: /^Mute/ })).toBeNull();
   });
 });

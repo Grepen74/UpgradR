@@ -2218,3 +2218,131 @@ input[type="radio"] {
     border-radius: 0;
   }
 }
+
+/* Inline explainer disclosure. Used where a number needs a caveat that would
+   be too long for a hint line -- e.g. the agent-supplied match score, which
+   UpgradR does not calculate and cannot verify. A disclosure rather than a
+   hover tooltip so it is reachable by touch and keyboard. */
+.explainer {
+  margin: 4px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-muted, rgb(255 255 255 / 70%));
+}
+
+.explainer > summary {
+  padding: 9px 13px;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.explainer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.explainer > summary:hover {
+  color: var(--accent-strong);
+}
+
+.explainer > summary:focus-visible {
+  outline: 2px solid var(--accent-mid);
+  outline-offset: 2px;
+  border-radius: 11px;
+}
+
+.explainer > div {
+  padding: 0 13px 11px;
+}
+
+.explainer p {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.explainer p:last-child {
+  margin-bottom: 0;
+}
+
+/* A checkbox and its label on one line, for opt-in/opt-out choices inside a
+   form grid that otherwise stacks label above control. */
+.checkbox-row {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.checkbox-row input {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* Trailing controls on an entity row (status pill, Remove button). */
+.entity-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* The title and the reorder grip sit on one row; the title takes the slack so
+   the grip stays pinned to the card's trailing edge at every column width. */
+.kanban-card-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 8px;
+}
+
+/* Deliberately always visible rather than revealed on hover: a control that
+   only appears on hover has no touch or keyboard equivalent, and this one is
+   the only non-drag way to reorder a card. */
+.kanban-card-grip {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-subtle);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: grab;
+}
+
+.kanban-card-grip:hover,
+.kanban-card-grip:focus-visible {
+  border-color: var(--line);
+  background: var(--surface-muted, rgba(0, 0, 0, 0.03));
+  color: var(--accent-strong);
+}
+
+.kanban-card-grip:active {
+  cursor: grabbing;
+}
+
+/* Marks the gap a dragged card would drop into. Sized to stay visible without
+   shifting the cards around it as the target moves between gaps. */
+.kanban-drop-indicator {
+  height: 3px;
+  margin: 5px 0;
+  border-radius: 999px;
+  background: var(--accent-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-drop-indicator {
+    transition: none;
+  }
+}

@@ -241,6 +241,16 @@ for (const tool of tools) {
   }
   lines.push(renderSchema(tool.inputSchema));
   lines.push("");
+
+  // Only tools that declare an outputSchema have one here. Where it is absent
+  // the tool still returns structuredContent -- there is simply no published
+  // contract for its shape, which is exactly why declaring one matters.
+  if (tool.outputSchema) {
+    lines.push("Returns:");
+    lines.push("");
+    lines.push(renderSchema(tool.outputSchema));
+    lines.push("");
+  }
 }
 
 lines.push("## Calling a tool");

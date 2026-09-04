@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApplicationSummary } from "./api";
-import { KanbanBoard } from "./KanbanBoard";
+import { KanbanBoard, orderAfterDrop } from "./KanbanBoard";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -27,6 +27,7 @@ function makeApplication(overrides: Partial<ApplicationSummary> = {}): Applicati
     match_score: 82,
     confidence: null,
     mcp_client_id: null,
+    board_position: 0,
     created_at: "2024-01-01T00:00:00.000Z",
     updated_at: "2024-01-01T00:00:00.000Z",
     labels: [],
@@ -143,7 +144,7 @@ describe("KanbanBoard", () => {
       if (url.includes("/api/tasks")) {
         return jsonResponse({ tasks: [] });
       }
-      if (url.includes("/status") && init?.method === "POST") {
+      if (url.includes("/board-position") && init?.method === "POST") {
         requests.push({ url, body: String(init.body) });
         return jsonResponse({ application: makeApplication({ current_status: "shortlisted" }) });
       }
@@ -165,8 +166,11 @@ describe("KanbanBoard", () => {
     await waitFor(() => {
       expect(requests).toHaveLength(1);
     });
-    expect(requests[0]?.url).toContain("/api/applications/app-1/status");
-    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({ status: "shortlisted" });
+    expect(requests[0]?.url).toContain("/api/applications/app-1/board-position");
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      status: "shortlisted",
+      orderedIds: ["app-1"],
+    });
     await waitFor(() => {
       expect(onRefresh).toHaveBeenCalled();
     });
@@ -179,7 +183,7 @@ describe("KanbanBoard", () => {
       if (url.includes("/api/tasks")) {
         return jsonResponse({ tasks: [] });
       }
-      if (url.includes("/status") && init?.method === "POST") {
+      if (url.includes("/board-position") && init?.method === "POST") {
         statusRequests.push(String(init.body));
         return jsonResponse({});
       }
@@ -222,7 +226,11 @@ describe("KanbanBoard", () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /Senior Engineer/i }));
+    // The card now carries two controls naming the role -- the title and the
+    // reorder handle -- so this has to say which one it means.
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Senior Engineer\s*Acme/i }),
+    );
     expect(onOpenApplication).toHaveBeenCalledWith("app-1");
   });
 
@@ -326,5 +334,429 @@ describe("KanbanBoard", () => {
       expect(screen.getByText("Dream job")).toBeVisible();
     });
     expect(screen.getByText("Overdue")).toBeVisible();
+  });
+});
+
+describe("orderAfterDrop", () => {
+  it("moves a card down within its own column", () => {
+    // The user aimed at index 2 of the list they could see, which still
+    // contained the card being dragged.
+    expect(orderAfterDrop(["a", "b", "c"], "a", 2)).toEqual(["b", "a", "c"]);
+  });
+
+  it("moves a card up within its own column", () => {
+    expect(orderAfterDrop(["a", "b", "c"], "c", 0)).toEqual(["c", "a", "b"]);
+  });
+
+  it("inserts a card arriving from another column", () => {
+    expect(orderAfterDrop(["a", "b"], "new", 1)).toEqual(["a", "new", "b"]);
+  });
+
+  it("appends when the index is past the end", () => {
+    expect(orderAfterDrop(["a", "b"], "new", 99)).toEqual(["a", "b", "new"]);
+  });
+
+  it("prepends when the index is negative", () => {
+    expect(orderAfterDrop(["a", "b"], "new", -3)).toEqual(["new", "a", "b"]);
+  });
+
+  it("treats a drop into the gap a card already occupies as a no-op", () => {
+    expect(orderAfterDrop(["a", "b", "c"], "b", 2)).toEqual(["a", "b", "c"]);
+  });
+
+  it("never duplicates the moved card", () => {
+    expect(orderAfterDrop(["a", "b", "c"], "b", 3)).toEqual(["a", "c", "b"]);
+  });
+});
+
+describe("KanbanBoard reordering", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  // jsdom has no DragEvent, and fireEvent.dragOver therefore drops the mouse
+  // coordinates the drop position is derived from. A real MouseEvent carries
+  // them, and React reads clientY straight off the native event.
+  function dragOverAt(card: HTMLElement, top: number, height: number, clientY: number) {
+    card.getBoundingClientRect = () =>
+      ({
+        top,
+        height,
+        bottom: top + height,
+        left: 0,
+        right: 0,
+        width: 0,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    fireEvent(card, new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY }));
+  }
+
+  function mockBoardFetch(captured: { url: string; body: string }[]) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      if (url.includes("/board-position") && init?.method === "POST") {
+        captured.push({ url, body: String(init.body) });
+        return jsonResponse({ application: makeApplication() });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+  }
+
+  const threeInInbox = [
+    makeApplication({ id: "app-1", title: "First", current_status: "saved", board_position: 0 }),
+    makeApplication({ id: "app-2", title: "Second", current_status: "saved", board_position: 1 }),
+    makeApplication({ id: "app-3", title: "Third", current_status: "saved", board_position: 2 }),
+  ];
+
+  it("reorders within a column when a card is dropped on the top half of another card", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    // Hover the top half of the first card, then drop on the column.
+    dragOverAt(screen.getByText("First").closest("article") as HTMLElement, 100, 100, 120);
+
+    fireEvent.drop(screen.getByRole("region", { name: /inbox/i }), {
+      dataTransfer: { getData: () => "app-3" },
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      status: "saved",
+      orderedIds: ["app-3", "app-1", "app-2"],
+    });
+  });
+
+  it("drops below a card when the pointer is over its bottom half", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    dragOverAt(screen.getByText("First").closest("article") as HTMLElement, 100, 100, 180);
+
+    fireEvent.drop(screen.getByRole("region", { name: /inbox/i }), {
+      dataTransfer: { getData: () => "app-3" },
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      orderedIds: ["app-1", "app-3", "app-2"],
+    });
+  });
+
+  it("clears the drop indicator when a drag is abandoned without a drop", async () => {
+    mockBoardFetch([]);
+
+    const { container } = render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    const first = screen.getByText("First").closest("article") as HTMLElement;
+    dragOverAt(first, 100, 100, 120);
+    expect(container.querySelectorAll(".kanban-drop-indicator")).toHaveLength(1);
+
+    // Escape-cancelling a drag fires dragend and nothing else.
+    fireEvent.dragEnd(first);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".kanban-drop-indicator")).toHaveLength(0);
+    });
+  });
+
+  it("sends no request when a card is dropped back into the position it already held", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn()}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Second");
+
+    dragOverAt(screen.getByText("Second").closest("article") as HTMLElement, 100, 100, 120);
+
+    fireEvent.drop(screen.getByRole("region", { name: /inbox/i }), {
+      dataTransfer: { getData: () => "app-2" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Second")).toBeVisible();
+    });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("carries the destination column's full order when a card crosses columns", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={[
+          makeApplication({ id: "app-1", title: "Moving", current_status: "saved" }),
+          makeApplication({ id: "app-2", title: "Sitting", current_status: "shortlisted" }),
+        ]}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Sitting");
+
+    dragOverAt(screen.getByText("Sitting").closest("article") as HTMLElement, 100, 100, 120);
+
+    fireEvent.drop(screen.getByRole("region", { name: /shortlist/i }), {
+      dataTransfer: { getData: () => "app-1" },
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      status: "shortlisted",
+      orderedIds: ["app-1", "app-2"],
+    });
+  });
+
+  it("reorders from the keyboard, so the board is usable without dragging", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder third/i }), {
+      key: "ArrowUp",
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      status: "saved",
+      orderedIds: ["app-1", "app-3", "app-2"],
+    });
+  });
+
+  // Every keyboard test used to press ArrowUp, which is the one direction
+  // where the "final index" and "drop gap index" conventions coincide. Moving
+  // down exercises the conversion between them, and its absence hid a bug
+  // where a downward keyboard move computed an unchanged order and was
+  // silently swallowed by the no-op guard -- so no request was ever sent.
+  it("moves a card down with the down arrow key", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder first/i }), {
+      key: "ArrowDown",
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      status: "saved",
+      orderedIds: ["app-2", "app-1", "app-3"],
+    });
+  });
+
+  it("moves the middle card down past the last one", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder second/i }), {
+      key: "ArrowDown",
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      orderedIds: ["app-1", "app-3", "app-2"],
+    });
+  });
+
+  it("sends nothing when the last card is pushed further down", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder third/i }), {
+      key: "ArrowDown",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(requests).toHaveLength(0);
+  });
+
+  it("moves a card to the next column with the right arrow key", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={[makeApplication({ id: "app-1", title: "First", current_status: "saved" })]}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("First");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder first/i }), {
+      key: "ArrowRight",
+    });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({ status: "shortlisted" });
+  });
+
+  it("does nothing when a card is already at the top and is moved up", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn()}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("First");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder first/i }), { key: "ArrowUp" });
+
+    await waitFor(() => {
+      expect(screen.getByText("First")).toBeVisible();
+    });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("refuses a drop the status taxonomy does not allow", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+
+    // A closed card is never rendered in a column, but the drop handler
+    // resolves ids against the caller's full list, so the guard has to hold.
+    render(
+      <KanbanBoard
+        applications={[
+          makeApplication({ id: "app-1", title: "Active", current_status: "saved" }),
+          makeApplication({ id: "app-9", title: "Done", current_status: "rejected" }),
+        ]}
+        onRefresh={vi.fn()}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Active");
+
+    fireEvent.drop(screen.getByRole("region", { name: /shortlist/i }), {
+      dataTransfer: { getData: () => "app-9" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/can't move directly/i)).toBeVisible();
+    });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("does not open the detail view when the reorder handle is used", async () => {
+    const requests: { url: string; body: string }[] = [];
+    mockBoardFetch(requests);
+    const onOpenApplication = vi.fn();
+
+    render(
+      <KanbanBoard
+        applications={threeInInbox}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={onOpenApplication}
+      />,
+    );
+
+    await screen.findByText("Third");
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /reorder third/i }), { key: "ArrowUp" });
+
+    await waitFor(() => {
+      expect(requests).toHaveLength(1);
+    });
+    expect(onOpenApplication).not.toHaveBeenCalled();
   });
 });

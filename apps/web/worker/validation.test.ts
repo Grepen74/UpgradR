@@ -22,6 +22,7 @@ import {
   oauthScopeUpdateSchema,
   profileImportConfirmSchema,
   profileUpdateSchema,
+  boardMoveSchema,
   statusTransitionSchema,
   taskCreateSchema,
   taskUpdateSchema,
@@ -68,6 +69,36 @@ describe("statusTransitionSchema", () => {
 
   it("rejects unknown statuses", () => {
     expect(statusTransitionSchema.safeParse({ status: "ghosted" }).success).toBe(false);
+  });
+});
+
+describe("boardMoveSchema", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+
+  it("accepts a status and the destination column's order", () => {
+    expect(boardMoveSchema.safeParse({ status: "shortlisted", orderedIds: [id] }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects an empty order, which would renumber nothing", () => {
+    expect(boardMoveSchema.safeParse({ status: "saved", orderedIds: [] }).success).toBe(false);
+  });
+
+  it("rejects ids that are not uuids", () => {
+    expect(boardMoveSchema.safeParse({ status: "saved", orderedIds: ["nope"] }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects an unknown status", () => {
+    expect(boardMoveSchema.safeParse({ status: "ghosted", orderedIds: [id] }).success).toBe(false);
+  });
+
+  it("rejects an order longer than the board ever serves", () => {
+    expect(
+      boardMoveSchema.safeParse({ status: "saved", orderedIds: Array(101).fill(id) }).success,
+    ).toBe(false);
   });
 });
 

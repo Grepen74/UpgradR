@@ -5,9 +5,10 @@ import {
 } from "@upgradr/contracts";
 
 import { Hono } from "hono";
+import { z } from "zod";
 
 import { recordActivityEvent } from "./activity";
-import { authenticated } from "./auth";
+import { authenticated, type AuthenticatedContext } from "./auth";
 import type { WebEnv } from "./env";
 import accountRoute from "./routes/account";
 import activityRoute from "./routes/activity";
@@ -17,6 +18,7 @@ import companiesRoute from "./routes/companies";
 import contactsRoute from "./routes/contacts";
 import documentsRoute from "./routes/documents";
 import labelsRoute from "./routes/labels";
+import suppressionsRoute from "./routes/suppressions";
 import notesRoute from "./routes/notes";
 import profileImportsRoute from "./routes/profileImports";
 import { isAllowedOrigin, securityHeaders } from "./security";
@@ -26,6 +28,9 @@ import {
   oauthDecisionSchema,
   oauthRevokeSchema,
   oauthScopeUpdateSchema,
+  profileEducationWriteSchema,
+  profileExperienceWriteSchema,
+  profileSkillWriteSchema,
   profileUpdateSchema,
   taskCreateSchema,
   taskUpdateSchema,
@@ -406,6 +411,149 @@ app.patch("/api/profile", async (context) => {
   return context.json({ profile: data });
 });
 
+/**
+ * Manual editing of the structured profile (experience, education, skills).
+ *
+ * Until now these tables could only be populated by confirming a profile
+ * import, so anything the parser missed was unreachable from the UI even
+ * though `GET /api/profile` already returned it.
+ *
+ * Rows written here are `is_confirmed = true` for the same reason the
+ * headline/summary PATCH above sets it: a value the user typed by hand has,
+ * by definition, been reviewed by the user, so MCP may read it.
+ */
+const CHILD_TABLES = {
+  experiences: {
+    table: "profile_experiences",
+    schema: profileExperienceWriteSchema,
+    select: "id,company,title,description,start_date,end_date,is_current,is_confirmed,sort_order",
+    toRow: (input: z.infer<typeof profileExperienceWriteSchema>) => ({
+      company: input.company,
+      title: input.title,
+      description: input.description,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      is_current: input.isCurrent,
+    }),
+  },
+  education: {
+    table: "profile_education",
+    schema: profileEducationWriteSchema,
+    select: "id,institution,degree,field_of_study,is_confirmed,sort_order",
+    toRow: (input: z.infer<typeof profileEducationWriteSchema>) => ({
+      institution: input.institution,
+      degree: input.degree,
+      field_of_study: input.fieldOfStudy,
+    }),
+  },
+  skills: {
+    table: "profile_skills",
+    schema: profileSkillWriteSchema,
+    select: "id,name,evidence,is_confirmed",
+    toRow: (input: z.infer<typeof profileSkillWriteSchema>) => ({
+      name: input.name,
+      evidence: input.evidence,
+    }),
+  },
+} as const;
+
+type ChildKind = keyof typeof CHILD_TABLES;
+
+function childKind(value: string): ChildKind | null {
+  return value in CHILD_TABLES ? (value as ChildKind) : null;
+}
+
+app.post("/api/profile/:kind", async (context) => {
+  const auth = await authenticated(context);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const kind = childKind(context.req.param("kind"));
+  if (!kind) {
+    return context.json({ error: "Unknown profile section" }, 404);
+  }
+
+  const spec = CHILD_TABLES[kind];
+  const parsed = spec.schema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) {
+    return context.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid entry" },
+      400,
+    );
+  }
+
+  // Every child row must carry candidate_profile_id; app.assert_owner_matches_parent()
+  // rejects the insert otherwise, and the id is not something the client should
+  // be trusted to supply.
+  const { data: profile, error: profileError } = await auth.supabase
+    .from("candidate_profiles")
+    .select("id")
+    .eq("owner_id", auth.userId)
+    .single();
+  if (profileError || !profile) {
+    return context.json({ error: "Unable to load candidate profile" }, 502);
+  }
+
+  const { data, error } = await auth.supabase
+    .from(spec.table)
+    .insert({
+      ...spec.toRow(parsed.data as never),
+      owner_id: auth.userId,
+      candidate_profile_id: profile.id,
+      is_confirmed: true,
+    })
+    .select(spec.select)
+    .single();
+  if (error) {
+    // A skill name collides with `unique (candidate_profile_id, name)`; say so
+    // rather than reporting a generic upstream failure.
+    if (error.code === "23505") {
+      return context.json({ error: "That entry already exists." }, 409);
+    }
+    return context.json({ error: "Unable to save entry" }, 502);
+  }
+
+  await touchProfileReview(auth);
+  return context.json({ entry: data }, 201);
+});
+
+app.delete("/api/profile/:kind/:id", async (context) => {
+  const auth = await authenticated(context);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const kind = childKind(context.req.param("kind"));
+  if (!kind) {
+    return context.json({ error: "Unknown profile section" }, 404);
+  }
+
+  const { error, count } = await auth.supabase
+    .from(CHILD_TABLES[kind].table)
+    .delete({ count: "exact" })
+    .eq("owner_id", auth.userId)
+    .eq("id", context.req.param("id"));
+  if (error) {
+    return context.json({ error: "Unable to remove entry" }, 502);
+  }
+  if (!count) {
+    return context.json({ error: "Entry not found" }, 404);
+  }
+
+  await touchProfileReview(auth);
+  // A JSON body rather than 204: the browser client parses every response as
+  // JSON (see apiRequest), so an empty body would throw on success.
+  return context.json({ deleted: true });
+});
+
+async function touchProfileReview(auth: AuthenticatedContext) {
+  await auth.supabase
+    .from("candidate_profiles")
+    .update({ last_reviewed_at: new Date().toISOString() })
+    .eq("owner_id", auth.userId);
+}
+
 app.get("/api/preferences", async (context) => {
   const auth = await authenticated(context);
   if (auth instanceof Response) {
@@ -415,7 +563,7 @@ app.get("/api/preferences", async (context) => {
   const { data, error } = await auth.supabase
     .from("job_search_preferences")
     .select(
-      "target_roles,locations,remote_policy,minimum_compensation,compensation_currency,industries,excluded_companies,notes",
+      "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes",
     )
     .eq("owner_id", auth.userId)
     .single();
@@ -428,6 +576,7 @@ app.get("/api/preferences", async (context) => {
     locations: data.locations,
     remotePolicy: data.remote_policy,
     minimumCompensation: data.minimum_compensation,
+    minimumCompensationPeriod: data.minimum_compensation_period,
     compensationCurrency: data.compensation_currency,
     industries: data.industries,
     excludedCompanies: data.excluded_companies,
@@ -454,6 +603,7 @@ app.patch("/api/preferences", async (context) => {
       locations: preferences.locations,
       remote_policy: preferences.remotePolicy,
       minimum_compensation: preferences.minimumCompensation,
+      minimum_compensation_period: preferences.minimumCompensationPeriod,
       compensation_currency: preferences.compensationCurrency?.toUpperCase() ?? null,
       industries: preferences.industries,
       excluded_companies: preferences.excludedCompanies,
@@ -560,6 +710,7 @@ app.patch("/api/tasks/:id", async (context) => {
 
 app.route("/api/applications", applicationsRoute);
 app.route("/api/labels", labelsRoute);
+app.route("/api/suppressions", suppressionsRoute);
 app.route("/api/companies", companiesRoute);
 app.route("/api/contacts", contactsRoute);
 app.route("/api/notes", notesRoute);

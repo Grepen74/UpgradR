@@ -1,3 +1,4 @@
+import type { CompensationPeriod } from "@upgradr/contracts";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { api, type JobSearchPreferences } from "./api";
@@ -9,6 +10,7 @@ const emptyPreferences: JobSearchPreferences = {
   locations: [],
   remotePolicy: "flexible",
   minimumCompensation: null,
+  minimumCompensationPeriod: "month",
   compensationCurrency: null,
   industries: [],
   excludedCompanies: [],
@@ -97,8 +99,12 @@ export function PreferencesTab() {
     <article className="panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Job search preferences</p>
-          <h2>What agents should look for on your behalf</h2>
+          <p className="eyebrow">Search filters</p>
+          <h2>What you're looking for</h2>
+          <p>
+            Agents use these to decide which openings to bring you. Everything here is intent,
+            not history — your background lives in the profile above.
+          </p>
         </div>
       </div>
 
@@ -166,6 +172,25 @@ export function PreferencesTab() {
                 }));
               }}
             />
+            <p className="field-hint">Gross amount before tax, in the period you pick alongside.</p>
+          </div>
+          <div>
+            <label htmlFor="minimumCompensationPeriod">Compensation period</label>
+            <select
+              id="minimumCompensationPeriod"
+              value={form.minimumCompensationPeriod}
+              onChange={(event) => {
+                const value = event.currentTarget.value as CompensationPeriod;
+                setForm((current) => ({ ...current, minimumCompensationPeriod: value }));
+              }}
+            >
+              <option value="month">Per month</option>
+              <option value="year">Per year</option>
+            </select>
+            <p className="field-hint">
+              Agents convert a posting&rsquo;s figure into this period before comparing, so a job
+              advertised annually is still matched correctly.
+            </p>
           </div>
           <div>
             <label htmlFor="compensationCurrency">Currency (3 letters)</label>
@@ -206,17 +231,22 @@ export function PreferencesTab() {
             <p className="field-hint">Separate multiple entries with commas.</p>
           </div>
           <div className="wide">
-            <label htmlFor="notes">Notes</label>
+            <label htmlFor="notes">Search notes</label>
             <textarea
               id="notes"
               rows={4}
               maxLength={4_000}
               value={form.notes ?? ""}
+              placeholder="Anything else an agent should know while searching — constraints, dealbreakers, visa or notice period, team size you prefer."
               onChange={(event) => {
                 const { value } = event.currentTarget;
                 setForm((current) => ({ ...current, notes: value || null }));
               }}
             />
+            <p className="field-hint">
+              Free text, read by agents on every search. Your experience belongs in the profile
+              above, not here.
+            </p>
           </div>
           <div className="form-actions wide">
             {message ? <StatusMessage>{message}</StatusMessage> : <span />}

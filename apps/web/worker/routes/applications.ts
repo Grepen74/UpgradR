@@ -7,6 +7,7 @@ import type { WebEnv } from "../env";
 import {
   applicationIdSchema,
   applicationLabelAttachSchema,
+  boardMoveSchema,
   statusTransitionSchema,
   uuidParamSchema,
 } from "../validation";
@@ -18,10 +19,10 @@ import {
 // keys, so PostgREST can infer the join without an explicit hint. RLS on
 // application_labels/labels still applies to the embedded rows.
 const APPLICATION_LIST_COLUMNS =
-  "id,title,company_name,location,source_url,source_provider,current_status,match_score,confidence,mcp_client_id,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
+  "id,title,company_name,location,source_url,source_provider,current_status,match_score,confidence,mcp_client_id,board_position,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
 
 const APPLICATION_DETAIL_COLUMNS =
-  "id,company_id,primary_contact_id,title,company_name,location,source_url,source_provider,external_id,description,compensation_min,compensation_max,compensation_currency,match_score,match_rationale,strengths,gaps,confidence,current_status,mcp_client_id,applied_at,archived_at,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
+  "id,company_id,primary_contact_id,title,company_name,location,source_url,source_provider,external_id,description,compensation_min,compensation_max,compensation_currency,compensation_period,match_score,match_rationale,strengths,gaps,confidence,current_status,mcp_client_id,applied_at,archived_at,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
 
 type EmbeddedLabel = {
   id: string;
@@ -66,6 +67,9 @@ applicationsRoute.get("/", async (context) => {
     .from("applications")
     .select(APPLICATION_LIST_COLUMNS)
     .eq("owner_id", auth.userId)
+    // Manual board order first; updated_at only breaks ties, which is every
+    // card the user has never dragged (they all sit at position 0).
+    .order("board_position", { ascending: true })
     .order("updated_at", { ascending: false })
     .limit(100);
   if (error) {
@@ -101,6 +105,7 @@ applicationsRoute.post("/", async (context) => {
       compensation_min: proposal.compensationMin ?? null,
       compensation_max: proposal.compensationMax ?? null,
       compensation_currency: proposal.compensationCurrency?.toUpperCase() ?? null,
+      compensation_period: proposal.compensationPeriod ?? null,
       match_score: proposal.matchScore ?? null,
       match_rationale: proposal.matchRationale ?? null,
       strengths: proposal.strengths,
@@ -160,7 +165,9 @@ applicationsRoute.get("/:id", async (context) => {
       .limit(100),
     auth.supabase
       .from("job_match_assessments")
-      .select("id,score,rationale,strengths,gaps,confidence,assessed_by,created_at")
+      .select(
+        "id,score,rationale,strengths,gaps,confidence,assessed_by,mcp_client_id,created_at",
+      )
       .eq("application_id", applicationId.data)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -219,6 +226,65 @@ applicationsRoute.post("/:id/status", async (context) => {
     eventType: "status_changed",
     payload: { status: parsed.data.status },
   });
+
+  return context.json({ application: data });
+});
+
+// POST /api/applications/:id/board-position { status, orderedIds } -- applies
+// a board drag. One call rather than "change status" followed by "reorder",
+// because a cross-column drag is both and half of it landing would silently
+// leave the card somewhere the user did not put it.
+applicationsRoute.post("/:id/board-position", async (context) => {
+  const auth = await authenticated(context);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const applicationId = applicationIdSchema.safeParse(context.req.param("id"));
+  if (!applicationId.success) {
+    return context.json({ error: "Invalid application identifier" }, 400);
+  }
+
+  const parsed = boardMoveSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) {
+    return context.json({ error: "Invalid board move" }, 400);
+  }
+
+  if (!parsed.data.orderedIds.includes(applicationId.data)) {
+    return context.json({ error: "The moved opportunity must appear in the new order" }, 400);
+  }
+
+  const previousStatus = await auth.supabase
+    .from("applications")
+    .select("current_status")
+    .eq("id", applicationId.data)
+    .eq("owner_id", auth.userId)
+    .maybeSingle();
+
+  const { data, error } = await auth.supabase.rpc("move_application_on_board", {
+    p_application_id: applicationId.data,
+    p_new_status: parsed.data.status,
+    p_ordered_ids: parsed.data.orderedIds,
+  });
+  if (error) {
+    console.error("Board move failed", { code: error.code });
+    return context.json(
+      { error: error.code === "P0002" ? "Application not found" : "Unable to move application" },
+      error.code === "P0002" ? 404 : 409,
+    );
+  }
+
+  // Only a column change is a pipeline event worth recording. Reordering
+  // within a column is a view preference, and logging it would bury real
+  // status history under drag noise.
+  if (previousStatus.data?.current_status !== parsed.data.status) {
+    await recordActivityEvent(auth, {
+      entityType: "application",
+      entityId: applicationId.data,
+      eventType: "status_changed",
+      payload: { status: parsed.data.status },
+    });
+  }
 
   return context.json({ application: data });
 });

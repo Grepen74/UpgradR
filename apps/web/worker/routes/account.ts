@@ -100,7 +100,7 @@ accountRoute.get("/export", async (context) => {
     supabase
       .from("job_search_preferences")
       .select(
-        "target_roles,locations,remote_policy,minimum_compensation,compensation_currency,industries,excluded_companies,notes,created_at,updated_at",
+        "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes,created_at,updated_at",
       )
       .eq("owner_id", userId)
       .maybeSingle(),
@@ -135,7 +135,7 @@ accountRoute.get("/export", async (context) => {
     supabase
       .from("applications")
       .select(
-        "id,company_id,primary_contact_id,title,company_name,location,source_url,source_provider,external_id,description,compensation_min,compensation_max,compensation_currency,match_score,match_rationale,strengths,gaps,confidence,current_status,mcp_client_id,applied_at,archived_at,created_at,updated_at",
+        "id,company_id,primary_contact_id,title,company_name,location,source_url,source_provider,external_id,description,compensation_min,compensation_max,compensation_currency,compensation_period,match_score,match_rationale,strengths,gaps,confidence,current_status,mcp_client_id,applied_at,archived_at,created_at,updated_at",
         { count: "exact" },
       )
       .eq("owner_id", userId)

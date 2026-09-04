@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { compensationPeriods } from "./compensation";
+
 export const applicationStatuses = [
   "proposed",
   "shortlisted",
@@ -82,13 +84,21 @@ export const jobProposalSchema = z.object({
     .finite()
     .nonnegative()
     .optional()
-    .describe("Bottom of the published salary range, as an annual figure."),
+    .describe(
+      "Bottom of the published salary range, exactly as the posting states it. Do not convert to another period -- send compensationPeriod alongside and the app normalizes when comparing against the user's floor.",
+    ),
   compensationMax: z
     .number()
     .finite()
     .nonnegative()
     .optional()
-    .describe("Top of the published salary range, as an annual figure."),
+    .describe("Top of the published salary range, in the same period and currency as compensationMin."),
+  compensationPeriod: z
+    .enum(compensationPeriods)
+    .optional()
+    .describe(
+      "Whether the range above is per 'month' or per 'year'. Required whenever you send an amount. State what the posting said rather than converting; if it quotes an hourly or daily rate, convert to a monthly figure yourself and say so in matchRationale, since that conversion needs an assumption about hours worked that only you can make.",
+    ),
   compensationCurrency: z
     .string()
     .trim()
@@ -138,7 +148,21 @@ export const jobProposalSchema = z.object({
     .describe(
       "Override a possible_duplicate result for this item only, when you have confirmed it is a genuinely different opening. Exact source-URL and provider job-id duplicates can never be overridden.",
     ),
-});
+})
+  // Mirrors the applications_compensation_period_required check constraint, so
+  // an agent gets a named field and a usable message instead of an opaque
+  // 23514 from Postgres. An amount without a period is unusable: it cannot be
+  // compared against the user's floor and cannot be rendered honestly.
+  .refine(
+    (proposal) =>
+      proposal.compensationPeriod !== undefined ||
+      (proposal.compensationMin === undefined && proposal.compensationMax === undefined),
+    {
+      path: ["compensationPeriod"],
+      message:
+        "compensationPeriod is required when you supply compensationMin or compensationMax. State whether the posting quoted the figure per month or per year.",
+    },
+  );
 
 export const createJobProposalsSchema = z.object({
   proposals: z
@@ -149,3 +173,48 @@ export const createJobProposalsSchema = z.object({
 });
 
 export type JobProposalInput = z.infer<typeof jobProposalSchema>;
+
+/**
+ * A later re-assessment of an opportunity that already exists.
+ *
+ * Deliberately carries only the assessment itself. Title, company, location,
+ * compensation and description are facts the user may have corrected by hand
+ * after the proposal landed, so re-scoring a match must not offer a channel
+ * for quietly reverting those corrections.
+ */
+export const assessJobMatchSchema = z.object({
+  applicationId: z
+    .uuid()
+    .describe("Id of the opportunity to assess, as returned by search_applications."),
+  matchScore: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe("Your assessment of fit against the user's profile, 0-100."),
+  matchRationale: z
+    .string()
+    .trim()
+    .max(4_000)
+    .optional()
+    .describe("Short explanation of the score, shown to the user alongside the opportunity."),
+  strengths: z
+    .array(z.string().trim().min(1).max(500))
+    .max(20)
+    .default([])
+    .describe("Concrete reasons the user fits this role. Replaces the previous list."),
+  gaps: z
+    .array(z.string().trim().min(1).max(500))
+    .max(20)
+    .default([])
+    .describe("Requirements the user does not clearly meet. Replaces the previous list."),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe("How confident you are in the extracted facts themselves, 0-1."),
+});
+
+export type AssessJobMatchInput = z.infer<typeof assessJobMatchSchema>;

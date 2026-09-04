@@ -91,7 +91,7 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
 
       sections.push(
         scopes.profile
-          ? "**1. Understand the candidate.**\nCall `get_candidate_profile` and `get_job_search_preferences`. Everything returned is user-confirmed; unreviewed imports are deliberately withheld. Treat the preferences (target roles, locations, remote policy, compensation floor, exclusions) as the search brief. If the profile is largely empty, say so plainly — your matches will be weak and the user should know why."
+          ? "**1. Understand the candidate.**\nCall `get_candidate_profile` and `get_job_search_preferences`. They do different jobs and you need both: the preferences are the **brief** — what to look for and what to reject — while the profile is the **evidence** you later score a surviving candidate against. They routinely disagree, and when they do the preferences win, because they describe what the user wants next rather than what they have already done.\nCheck `isConfigured` on the preferences. If it is false the user has never set a brief, and the empty row you got back is a default rather than a decision — do not read it as \"search anywhere for anything\". Infer a brief from the profile instead, and state in your final report exactly what you assumed so the user can correct it. If the profile is largely empty too, say so plainly and ask rather than guessing twice over.\nEverything returned is user-confirmed; unreviewed imports are deliberately withheld."
           : `**1. Understand the candidate.**\n${missingScopeNotice("read the profile or preferences", SCOPES.profileRead)}\nAsk the user to describe what they are looking for in this conversation instead.`,
       );
 
@@ -105,8 +105,16 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
         "**3. Search.**\nUse your own web search and browsing tools. UpgradR does not search the internet; it stores what you find. Prefer the employer's own posting over an aggregator when both exist, since the canonical URL is a de-duplication key.",
       );
 
+      // Deliberately two steps. Collapsing them into "assess against the
+      // profile and preferences" is what lets an agent quietly turn a hard
+      // constraint into a low score, so the user sees a job they already said
+      // they could not take.
       sections.push(
-        "**4. Evaluate.**\nAssess each surviving candidate against the profile and preferences. Be honest about gaps — this is decision support for a real job search, not a sales pitch. A short specific rationale is worth more than a high score.",
+        "**4a. Filter on intent.**\nApply the preferences as a pass/fail gate before scoring anything. Excluded companies, locations combined with remote policy, the compensation floor, and any non-empty industry list are hard: a candidate failing one is dropped, not down-ranked. Target roles are directional — a strong adjacent role survives this gate, as long as you justify it later.\nNormalize compensation into the floor's own period before comparing, and compare against the bottom of an advertised range. A posting that states no pay has not failed the test: most state none. Keep it, and flag that the pay was unstated. Converting a foreign currency is your job, since UpgradR has no exchange-rate source — do it, and say what rate you used.",
+      );
+
+      sections.push(
+        "**4b. Score on evidence.**\nOnly now bring in the profile, and only for candidates that survived 4a. Ground `matchScore` and `matchRationale` in specific experience, education, and skills rather than restating the job ad. Be honest about gaps — this is decision support for a real job search, not a sales pitch, and a short specific rationale is worth more than a high score.\nA weak profile match is a low score. A failed preference is not a score at all: it was already dropped in 4a.",
       );
 
       sections.push(
@@ -200,7 +208,10 @@ function registerTriageProposals(server: McpServer, ctx: ToolContext): void {
         scopes.write
           ? "**5.** Once the user confirms, apply the decisions with `move_application_status`: accepted items to `shortlisted`, rejected ones to `dismissed`. Move only what they explicitly approved. Never delete an opportunity here — closing keeps it in the de-duplication set so it is never proposed again, whereas deleting loses that memory."
           : `**5.** ${missingScopeNotice("change statuses", SCOPES.applicationsWrite)}\nPresent your recommendations for the user to apply in the app.`,
-      ];
+        scopes.write
+          ? "**6.** Where your judgement differs materially from the score already on an opportunity, or where you established something the original proposal missed, call `assess_job_match` to record it. Each call is kept as attributed history alongside the earlier one, so the user can see that a judgement changed and why — do not use it to quietly restate a score you agree with, and do not use it on items you just closed."
+          : "",
+      ].filter((step) => step !== "");
 
       return textPrompt(steps.join("\n\n"));
     },

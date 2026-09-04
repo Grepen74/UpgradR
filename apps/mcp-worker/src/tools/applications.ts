@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import {
   applicationStatusSchema,
+  assessJobMatchSchema,
   createJobProposalsSchema,
   type JobProposalInput,
 } from "@upgradr/contracts";
@@ -44,7 +45,7 @@ const moveApplicationStatusSchema = z.object({
 });
 
 const APPLICATION_SELECT =
-  "id,title,company_name,location,source_url,source_provider,current_status,match_score,match_rationale,compensation_min,compensation_max,compensation_currency,created_at,updated_at";
+  "id,title,company_name,location,source_url,source_provider,current_status,match_score,match_rationale,compensation_min,compensation_max,compensation_currency,compensation_period,created_at,updated_at";
 
 /**
  * Schema per `supabase/migrations/20250115120500_applications.sql`,
@@ -126,6 +127,7 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
         "Propose up to 20 new job opportunities for the user to review. Each proposal must cite a valid HTTP(S) source URL. " +
         "Duplicates are detected server-side against every opportunity the user owns, including ones they already closed, so no proposal is ever silently duplicated: " +
         "each item comes back as created, duplicate (same provider job id or same canonical source URL), or possible_duplicate (same company, title and location found at a different URL). " +
+        "An item may also come back as suppressed, meaning the user has asked never to see it again -- a muted company or role, or a posting they closed. That is a decision only the user can reverse, so do not retry it and do not work around it with a different URL. " +
         "Duplicate results include the existing opportunity's id and current status, so a closed match means the user already rejected or dismissed that job — do not propose it again. " +
         "Set allowSimilar on an item only to override a possible_duplicate you have confirmed is a genuinely different opening. " +
         "Use list_known_opportunity_keys once per run to filter candidates before calling this tool.",
@@ -149,6 +151,7 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
         compensation_min: proposal.compensationMin ?? null,
         compensation_max: proposal.compensationMax ?? null,
         compensation_currency: proposal.compensationCurrency ?? null,
+        compensation_period: proposal.compensationPeriod ?? null,
         match_score: proposal.matchScore ?? null,
         match_rationale: proposal.matchRationale ?? null,
         strengths: proposal.strengths,
@@ -167,6 +170,61 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
       return {
         content: [{ type: "text", text: JSON.stringify(outcome, null, 2) }],
         structuredContent: outcome,
+      };
+    },
+  );
+
+  registerScopedTool(
+    server,
+    ctx,
+    "assess_job_match",
+    {
+      title: "Assess job match",
+      description:
+        "Record a match assessment against an opportunity that already exists, for example after learning more about the role or after the user updated their profile. " +
+        "Each call appends a new, attributed entry to the opportunity's assessment history and becomes its current score; earlier assessments are kept so the user can see how a judgement changed. " +
+        "Supply at least a score or a rationale. strengths and gaps replace the previous lists rather than adding to them. " +
+        "To propose an opportunity the user does not have yet, use create_job_proposals instead — this tool never creates one.",
+      inputSchema: assessJobMatchSchema,
+      annotations: { idempotentHint: false, destructiveHint: false },
+    },
+    async (
+      { applicationId, matchScore, matchRationale, strengths, gaps, confidence },
+      { supabase, auth },
+    ) => {
+      // Checked here as well as in the database so the agent gets a direct
+      // explanation instead of a raw SQLSTATE. An assessment with neither a
+      // score nor a rationale would blank the existing score and append an
+      // empty history row, which is data loss dressed up as an update.
+      if (matchScore === undefined && !matchRationale) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "invalid_request: an assessment requires at least matchScore or matchRationale.",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // The history insert, the refresh of the opportunity's current score,
+      // and the activity event happen inside one transaction in
+      // public.record_job_match_assessment(); see
+      // supabase/migrations/20250115122200_job_match_assessments.sql.
+      const row = await supabase.rpc<Record<string, unknown>>("record_job_match_assessment", {
+        p_application_id: applicationId,
+        p_score: matchScore ?? null,
+        p_rationale: matchRationale ?? null,
+        p_strengths: strengths,
+        p_gaps: gaps,
+        p_confidence: confidence ?? null,
+        p_mcp_client_id: auth.clientId,
+      });
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(row, null, 2) }],
+        structuredContent: row,
       };
     },
   );

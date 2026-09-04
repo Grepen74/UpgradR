@@ -192,6 +192,20 @@ describe("MCP prompts", () => {
       expect(render(FULL, "triage_proposals")).toContain("Move only what they explicitly approved");
     });
 
+    // The assessment step is only reachable with write scope, and only after
+    // the user's decisions have been applied.
+    it("offers assess_job_match after the status changes, not before", () => {
+      const text = render(FULL, "triage_proposals");
+      expect(text).toContain("assess_job_match");
+      expect(text.indexOf("move_application_status")).toBeLessThan(text.indexOf("assess_job_match"));
+    });
+
+    it("omits the assessment step entirely without write scope", () => {
+      expect(render(["mcp", "applications:read"], "triage_proposals")).not.toContain(
+        "assess_job_match",
+      );
+    });
+
     it("degrades to recommendations without write scope", () => {
       const text = render(["mcp", "applications:read"], "triage_proposals");
       expect(text).toContain("was not granted `applications:write`");

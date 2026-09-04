@@ -121,6 +121,153 @@ fingerprints, and closed flags) and filter candidates locally, rather than
 searching per candidate. It is an optimization, not a security boundary: an
 agent that skips it still cannot create a duplicate.
 
+### Match assessments
+
+A match score is supplied by the agent that produced it; UpgradR never
+calculates one. Every score is therefore kept as attributed history in
+`job_match_assessments` rather than as a single mutable number, so a user can
+see who scored an opportunity, when, and how the judgement changed.
+
+Two paths write that history, and both attribute the row to the calling client:
+
+- `create_job_proposals` seeds the first assessment automatically. This happens
+  in a database trigger on `applications`, so an opportunity created with a
+  score can never end up with an empty history, whatever created it.
+- `assess_job_match` records a later re-assessment — after reading the full
+  posting, after a recruiter call, or after the user's profile changed. It
+  appends; it never edits or removes an earlier assessment.
+
+`assess_job_match` deliberately accepts **only** the assessment fields. Title,
+company, location, compensation, and description are facts the user may have
+corrected by hand after the proposal landed, and re-scoring a match must not
+become a channel for quietly reverting those corrections. It also never creates
+an opportunity: use `create_job_proposals` for anything not already tracked.
+
+It requires `applications:read` as well as `applications:write`, because it
+reads the opportunity before writing it. That is a real dependency rather than
+a formality — re-scoring a job an agent is not allowed to look at is not a
+coherent operation — and declaring it up front turns what would otherwise be an
+opaque "not found" from RLS into an explicit `insufficient_scope` refusal.
+
+An assessment carrying neither a score nor a rationale is refused, in the tool
+and again in the database: it would blank the score already on the opportunity
+and append an empty row, which is data loss rather than an update.
+
+### Suppressions: what the user never wants to see again
+
+De-duplication answers "does this already exist". Suppressions answer the
+different question of "does the user want this at all", and they are enforced
+server-side inside `create_job_proposals`, which returns `suppressed` for a
+matching item.
+
+There are four key types. `canonical_url` and `provider_external_id` identify
+one specific posting and are seeded automatically, and permanently, whenever the
+user closes an opportunity as rejected, withdrawn, or dismissed. `company` and
+`fingerprint` are patterns the user sets by hand and lapse after 180 days,
+because a silently permanent company mute would narrow a job search long after
+the reason for it was forgotten.
+
+Two properties matter to an agent:
+
+- **Suppression outlives the opportunity row.** Existence-based matching
+  forgets a posting the moment the user deletes it; a suppression does not.
+  This is the main reason the table exists.
+- **Suppression is checked only after the existence layers.** If a matching row
+  still exists, the richer `duplicate` result is returned instead, because it
+  carries the opportunity's id and current status — enough to tell "already on
+  your board" from "you closed this in March", which a bare `suppressed` would
+  throw away.
+
+`list_known_opportunity_keys` returns the active rules alongside the dedup keys
+so an agent can filter its candidates locally in one pass. Expired rules are
+excluded from that response, since listing a rule the server would not actually
+enforce would make an agent discard candidates unnecessarily.
+
+**Agents cannot create or remove suppressions.** Every write policy on the table
+refuses MCP requests outright. An agent that could add one could quietly narrow
+the user's search, and one that could delete one could undo a deliberate
+decision; the only way an agent affects this list is indirectly, by closing an
+opportunity the user asked it to close. Treat a `suppressed` result as final:
+do not retry it, and do not attempt to reach the same job through a different
+URL.
+
+## Profile vs. search filters: which one answers which question
+
+`get_candidate_profile` and `get_job_search_preferences` return overlapping-
+sounding text about the same person, and the overlap is real enough that
+"Senior iOS Engineer" is a plausible value in both. They are not redundant.
+They answer different questions and are used at different points in a run.
+
+| | `get_candidate_profile` | `get_job_search_preferences` |
+|---|---|---|
+| What it is | Evidence — what the user has actually done | Intent — what the user wants next |
+| What you do with it | **Score** a candidate you already found | **Generate** queries and **reject** candidates |
+| When | After filtering | Before and during searching |
+| If they conflict | Loses | **Wins** |
+
+The conflict case is not an edge case. A user whose profile reads "Senior iOS
+Engineer" may be deliberately looking for engineering management, and the
+profile will keep saying iOS forever, because history does not change. Scoring
+against history is right; *searching* against it is how an agent spends a run
+finding more of the job the user is trying to leave.
+
+The practical consequence is that filtering and scoring are separate steps.
+Apply the filters as a pass/fail gate first, then bring in the profile to score
+only what survived. Collapsing the two lets a hard constraint quietly become a
+low score, so a job the user already said they cannot take still reaches their
+Inbox — ranked lower, but present, which is not what a constraint means.
+
+### Which filters are hard
+
+Hard, and disqualifying: `excludedCompanies`; `locations` combined with
+`remotePolicy`; `minimumCompensation`; and `industries` when non-empty.
+
+Directional, not hard: `targetRoles`. It describes the shape of what the user
+wants rather than an allow-list of titles, so a strong adjacent role is worth
+proposing — with the reasoning stated in `matchRationale`.
+
+`notes` is free text the user wrote for you. It can introduce hard constraints
+the structured fields cannot express, so read it before searching.
+
+### Compensation has a period, and getting it wrong is a factor of twelve
+
+`minimumCompensation` is a gross pre-tax floor in `compensationCurrency`,
+quoted per `minimumCompensationPeriod` (`month` or `year`). Postings state
+whatever they state, so `create_job_proposals` takes `compensationPeriod`
+alongside `compensationMin`/`compensationMax`.
+
+Send what the posting said. Do not convert on write: the stored figure stays
+checkable against the original ad, and normalization happens once, at
+comparison. Supplying an amount without a period is refused, both by the tool
+schema and by a database constraint — an unlabelled figure cannot be compared
+or displayed honestly.
+
+Three rules that decide what reaches the user:
+
+- **Normalize before comparing**, and compare against the **bottom** of an
+  advertised range. A range that merely might clear the floor has not cleared it.
+- **Unstated pay is not a failed test.** Most postings state none. Propose it
+  and flag that the figure was unknown; discarding on silence would empty the
+  Inbox.
+- **Currency conversion is yours.** UpgradR has no exchange-rate source and
+  deliberately acquires none — it is a recurring dependency with staleness and
+  cost, on a backend that is allowed to pause. Convert, and state the rate you
+  used. The same applies to hourly or daily rates: only `month` and `year`
+  exist, because they are the only two that convert without an invented
+  assumption about hours worked.
+
+### An empty brief is not a permissive one
+
+Every account is given a `job_search_preferences` row at signup, so a user who
+has never opened the page returns `remotePolicy: "flexible"` and empty arrays
+for everything — byte-for-byte what a deliberately unconstrained search looks
+like. `isConfigured` tells the two apart.
+
+When it is false, do not search on the empty row. Infer a brief from the
+candidate profile and **say in your report that you did, and what you assumed**,
+so the user can correct it. `updatedAt` gives the brief's age; stale filters are
+still the user's stated intent, so mention the age rather than overriding them.
+
 ## Headless / scripted clients
 
 An agent that needs to act as the real signed-in user without a browser cannot

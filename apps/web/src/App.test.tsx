@@ -39,6 +39,19 @@ describe("App", () => {
       if (url.includes("/api/applications")) {
         return jsonResponse({ applications: [] });
       }
+      if (url.includes("/api/preferences")) {
+        return jsonResponse({
+          targetRoles: [],
+          locations: [],
+          remotePolicy: "flexible",
+          minimumCompensation: null,
+          minimumCompensationPeriod: "month",
+          compensationCurrency: null,
+          industries: [],
+          excludedCompanies: [],
+          notes: null,
+        });
+      }
       if (url.includes("/api/profile")) {
         return jsonResponse({
           profile: {
@@ -64,12 +77,16 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/headline/i)).toHaveValue("Senior iOS Engineer");
     });
+    expect(screen.getByRole("heading", { name: "Who you are" })).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: "How agents match you with opportunities" }),
+      screen.getByText(/connected agents read this to understand your background/i),
     ).toBeVisible();
-    expect(
-      screen.getByText(/connected agents use this information to understand who you are/i),
-    ).toBeVisible();
+    // Search filters were folded into the profile page, so both halves render
+    // together and there is no separate Preferences menu entry.
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "What you're looking for" })).toBeVisible();
+    });
+    expect(screen.queryByRole("menuitem", { name: "Preferences" })).toBeNull();
   });
 
   it("lets a signed-in user open the profile menu and switch to profile imports", async () => {

@@ -327,6 +327,243 @@ if (accessToken) {
     "tools/call get_job_search_dashboard (RLS-scoped read)",
     JSON.stringify(dashboard.body?.result ?? dashboard.body).slice(0, 200),
   );
+
+  // A full write round trip: propose an opportunity, re-score it, and read the
+  // score back. This is the only place the assessment path is exercised over
+  // the wire against real RLS-scoped data rather than a mocked Supabase
+  // client, and it is what proves the history table finally has a writer.
+  //
+  // The title carries a per-run suffix because the harness signs in as the
+  // same user every time: without it the second run trips the company+title+
+  // location fingerprint check and comes back as possible_duplicate, which is
+  // the de-duplication layer working correctly, not a failure to create.
+  const runId = Date.now();
+  const proposed = await rpc(
+    "tools/call",
+    {
+      name: "create_job_proposals",
+      arguments: {
+        proposals: [
+          {
+            title: `Harness iOS Engineer ${runId}`,
+            companyName: "Harness Labs",
+            sourceUrl: `https://harness.example/jobs/${runId}`,
+            sourceProvider: "harness.example",
+            matchScore: 61,
+            matchRationale: "Initial automated read of the posting.",
+            // Deliberately annual, and deliberately a figure that is over a
+            // 55k monthly floor only once divided by 12. If the period were
+            // dropped anywhere along the path this is what would silently
+            // compare wrong.
+            compensationMin: 660000,
+            compensationMax: 720000,
+            compensationCurrency: "SEK",
+            compensationPeriod: "year",
+          },
+        ],
+      },
+    },
+    4,
+  );
+  const createdId = (() => {
+    try {
+      return JSON.parse(proposed.body.result.content[0].text).results[0].application.id;
+    } catch {
+      return null;
+    }
+  })();
+  check(Boolean(createdId), "tools/call create_job_proposals created an opportunity", createdId);
+
+  if (createdId) {
+    const assessed = await rpc(
+      "tools/call",
+      {
+        name: "assess_job_match",
+        arguments: {
+          applicationId: createdId,
+          matchScore: 88,
+          matchRationale: "Re-scored after reading the full requirements.",
+          strengths: ["Swift", "SwiftUI"],
+          gaps: [],
+          confidence: 0.9,
+        },
+      },
+      5,
+    );
+    check(
+      assessed.status === 200 && !assessed.body.error && !assessed.body.result?.isError,
+      "tools/call assess_job_match re-scored the opportunity",
+      JSON.stringify(assessed.body?.result ?? assessed.body).slice(0, 200),
+    );
+
+    const reread = await rpc(
+      "tools/call",
+      { name: "get_application", arguments: { applicationId: createdId } },
+      6,
+    );
+    let latest = null;
+    try {
+      latest = JSON.parse(reread.body.result.content[0].text);
+    } catch {
+      latest = null;
+    }
+    check(
+      latest?.match_score === 88,
+      "the re-scored value is what a later read returns",
+      `match_score=${latest?.match_score}`,
+    );
+
+    // The point of the tool is that it does not become a back door for
+    // rewriting facts the user may have corrected by hand.
+    check(
+      latest?.title === `Harness iOS Engineer ${runId}`,
+      "assessing did not alter user-editable facts",
+      `title=${latest?.title}`,
+    );
+
+    // The period survives the whole path -- tool schema, RPC, check
+    // constraint, and back out through a separate read. Storing the amount
+    // without it is what made every comparison wrong by 12x.
+    check(
+      latest?.compensation_period === "year" && Number(latest?.compensation_min) === 660000,
+      "the posting's own compensation period round-trips unchanged",
+      `min=${latest?.compensation_min} period=${latest?.compensation_period}`,
+    );
+
+    // An assessment with neither figure would blank the score already there.
+    const empty = await rpc(
+      "tools/call",
+      { name: "assess_job_match", arguments: { applicationId: createdId } },
+      7,
+    );
+    check(
+      empty.body?.result?.isError === true,
+      "an assessment with neither score nor rationale is refused",
+      JSON.stringify(empty.body?.result ?? empty.body).slice(0, 160),
+    );
+
+    const prefs = await rpc(
+      "tools/call",
+      { name: "get_job_search_preferences", arguments: {} },
+      71,
+    );
+    const brief = prefs.body?.result?.structuredContent ?? null;
+    check(
+      brief !== null && typeof brief.isConfigured === "boolean",
+      "get_job_search_preferences reports whether a brief was ever set",
+      `isConfigured=${brief?.isConfigured}`,
+    );
+    check(
+      brief?.minimumCompensationPeriod === "month" || brief?.minimumCompensationPeriod === "year",
+      "the compensation floor arrives with the period it is quoted in",
+      `period=${brief?.minimumCompensationPeriod}`,
+    );
+
+    // structuredContent is only validated when a tool declares an
+    // outputSchema, so this failing means the declaration was lost.
+    const listedTools = await rpc("tools/list", {}, 72);
+    const profileTool = (listedTools.body?.result?.tools ?? []).find(
+      (tool) => tool.name === "get_job_search_preferences",
+    );
+    check(
+      Boolean(profileTool?.outputSchema?.properties?.isConfigured?.description),
+      "the tool publishes a return shape with field descriptions",
+      Object.keys(profileTool?.outputSchema?.properties ?? {}).join(","),
+    );
+
+    // Suppression memory outliving the row is the one thing existence-based
+    // de-duplication cannot do, and it is only observable end to end: the
+    // trigger fires in Postgres, the rule is read back through PostgREST, and
+    // create_job_proposals enforces it on a later call. Closing an
+    // opportunity is the user's decision relayed by the agent, so the agent
+    // drives the close but never writes the suppression itself.
+    const closed = await rpc(
+      "tools/call",
+      {
+        name: "move_application_status",
+        arguments: {
+          applicationId: createdId,
+          newStatus: "dismissed",
+          note: "Harness: closing to seed an automatic suppression.",
+        },
+      },
+      8,
+    );
+    check(
+      closed.status === 200 && !closed.body.error && !closed.body.result?.isError,
+      "closing an opportunity as dismissed succeeds",
+      JSON.stringify(closed.body?.result ?? closed.body).slice(0, 120),
+    );
+
+    // Also the only live exercise of the `or=(expires_at.is.null,...)` filter
+    // this tool builds; a serialization mistake there would silently return
+    // rules that are not enforced, or drop rules that are.
+    const known = await rpc("tools/call", { name: "list_known_opportunity_keys", arguments: {} }, 9);
+    let knownKeys = null;
+    try {
+      knownKeys = JSON.parse(known.body.result.content[0].text);
+    } catch {
+      knownKeys = null;
+    }
+    check(
+      Array.isArray(knownKeys?.suppressions) &&
+        knownKeys.suppressions.some(
+          (rule) => rule.keyValue === `https://harness.example/jobs/${runId}`,
+        ),
+      "closing seeded a suppression an agent can read back",
+      `suppressions=${knownKeys?.suppressions?.length}`,
+    );
+
+    // The user deletes the opportunity from the app. The agent holds no
+    // applications:delete scope here, which is the realistic shape: the row
+    // goes away without the agent's involvement.
+    const { error: deleteError } = await supabase
+      .from("applications")
+      .delete()
+      .eq("id", createdId);
+    check(!deleteError, "the user deletes the opportunity from the app", deleteError?.message);
+
+    const reproposed = await rpc(
+      "tools/call",
+      {
+        name: "create_job_proposals",
+        arguments: {
+          proposals: [
+            {
+              title: `Harness iOS Engineer ${runId}`,
+              companyName: "Harness Labs",
+              sourceUrl: `https://harness.example/jobs/${runId}`,
+              sourceProvider: "harness.example",
+            },
+          ],
+        },
+      },
+      10,
+    );
+    let repropose = null;
+    try {
+      repropose = JSON.parse(reproposed.body.result.content[0].text).results[0];
+    } catch {
+      repropose = null;
+    }
+    // Without the suppression this would come back `created`, because the row
+    // it would otherwise have matched no longer exists.
+    check(
+      repropose?.outcome === "suppressed",
+      "re-proposing a deleted-but-closed posting is refused from memory",
+      `outcome=${repropose?.outcome} reason=${repropose?.suppression?.keyType ?? "n/a"}`,
+    );
+
+    // Suppressions deliberately survive the row they came from, so unlike the
+    // opportunity they are not cleaned up by the delete above. Left alone they
+    // would accumulate one pair per run in the muted list of a real local
+    // account, so the harness removes its own.
+    const { error: unsuppressError } = await supabase
+      .from("opportunity_suppressions")
+      .delete()
+      .eq("key_value", `https://harness.example/jobs/${runId}`);
+    check(!unsuppressError, "the harness removes the suppressions it created", unsuppressError?.message);
+  }
 }
 
 // 8. Grant changes take effect -------------------------------------------

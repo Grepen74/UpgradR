@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 
 import type { ApplicationStatus } from "@upgradr/contracts";
 import {
+  fingerprintToken,
+  formatCompensationRange,
   isTerminalStatus,
   kanbanClosedOutcomeStatuses,
   kanbanStageCanonicalStatus,
@@ -20,6 +22,7 @@ import {
   type LabelSummary,
   type MatchAssessment,
   type NoteSummary,
+  type SuppressionSummary,
   type TaskSummary,
 } from "./api";
 import { ConfirmButton, StatusMessage } from "./components/Feedback";
@@ -66,6 +69,7 @@ export function OpportunityDetail({
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [labels, setLabels] = useState<LabelSummary[]>([]);
+  const [suppressions, setSuppressions] = useState<SuppressionSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -82,6 +86,7 @@ export function OpportunityDetail({
         contactsResult,
         activityResult,
         labelsResult,
+        suppressionsResult,
       ] = await Promise.all([
         api.getApplicationDetail(applicationId),
         api.getTasks(),
@@ -91,6 +96,7 @@ export function OpportunityDetail({
         api.getContacts(),
         api.getActivity({ entityType: "application", entityId: applicationId }),
         api.getLabels(),
+        api.getSuppressions(),
       ]);
       setDetail(detailResult);
       setTasks(tasksResult.tasks);
@@ -100,6 +106,7 @@ export function OpportunityDetail({
       setContacts(contactsResult.contacts);
       setActivity(activityResult.events);
       setLabels(labelsResult.labels);
+      setSuppressions(suppressionsResult.suppressions);
       setLoadError(undefined);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Unable to load this opportunity.");
@@ -158,6 +165,38 @@ export function OpportunityDetail({
       await Promise.all([refresh(), onChanged()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update status.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function muteCompany(companyName: string) {
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      await api.createSuppression({
+        keyType: "company",
+        keyValue: companyName,
+        reason: `Muted from ${detail?.application.title ?? "an opportunity"}`,
+      });
+      await refresh();
+      setMessage(`${companyName} muted. Manage this under More > Muted sources.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to mute this company.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unmuteCompany(suppressionId: string, companyName: string) {
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      await api.deleteSuppression(suppressionId);
+      await refresh();
+      setMessage(`${companyName} unmuted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to unmute this company.");
     } finally {
       setBusy(false);
     }
@@ -346,6 +385,14 @@ export function OpportunityDetail({
               <CloseSection busy={busy} onClose={(status) => void changeStatus(status)} />
             )}
 
+            <MuteCompanySection
+              companyName={detail.application.company_name}
+              suppressions={suppressions}
+              busy={busy}
+              onMute={(name) => void muteCompany(name)}
+              onUnmute={(id, name) => void unmuteCompany(id, name)}
+            />
+
             <MatchSection application={detail.application} matchAssessments={detail.matchAssessments} />
 
             <LabelSection
@@ -389,6 +436,13 @@ export function OpportunityDetail({
 }
 
 function OverviewSection({ application }: { application: ApplicationDetailRecord }) {
+  const compensation = formatCompensationRange({
+    min: application.compensation_min,
+    max: application.compensation_max,
+    currency: application.compensation_currency,
+    period: application.compensation_period,
+  });
+
   return (
     <section className="detail-section">
       <p className="eyebrow">Overview</p>
@@ -404,11 +458,15 @@ function OverviewSection({ application }: { application: ApplicationDetailRecord
         · {application.source_provider}
       </p>
       {application.description ? <p className="detail-description">{application.description}</p> : null}
-      {application.compensation_min !== null || application.compensation_max !== null ? (
+      {compensation ? (
         <p>
-          {application.compensation_currency ?? ""} {application.compensation_min ?? "?"}
-          {" – "}
-          {application.compensation_max ?? "?"}
+          {compensation}
+          {application.compensation_period === null ? (
+            // The posting did not say. Showing a bare figure would invite the
+            // reader to assume the period they happen to think in, and a
+            // monthly-vs-annual misreading is a factor of twelve.
+            <span className="field-hint"> (period not stated in the posting)</span>
+          ) : null}
         </p>
       ) : null}
     </section>
@@ -547,6 +605,90 @@ function CloseSection({
 }
 
 /**
+ * "Mute this company" lives here because this is where the intent forms.
+ *
+ * A user decides they never want to hear from an employer again while looking
+ * at one of its postings, not while browsing a settings list -- so before this
+ * existed, the only way to act on that was to remember it, navigate to
+ * More > Muted sources, and retype the company name.
+ *
+ * It only ever offers the company rule. Muting the specific posting is not
+ * offered because closing the opportunity as rejected/dismissed/withdrawn
+ * already does exactly that, automatically, and a second control for the same
+ * outcome would just be a way to get the two out of step.
+ *
+ * The mute is shown as reversible from here rather than only from the tab,
+ * because a control that can be turned on but not off in the same place reads
+ * as more permanent than it is -- and this one lapses after 180 days anyway.
+ */
+function MuteCompanySection({
+  companyName,
+  suppressions,
+  busy,
+  onMute,
+  onUnmute,
+}: {
+  companyName: string | null;
+  suppressions: SuppressionSummary[];
+  busy: boolean;
+  onMute: (companyName: string) => void;
+  onUnmute: (suppressionId: string, companyName: string) => void;
+}) {
+  const trimmed = companyName?.trim() ?? "";
+  // Company rules are stored normalized, so comparing raw text here would miss
+  // "Acme, Inc." against a rule created from "Acme Inc".
+  const token = fingerprintToken(trimmed);
+  const existing = token
+    ? suppressions.find((rule) => rule.key_type === "company" && rule.key_value === token)
+    : undefined;
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return (
+    <section className="detail-section">
+      <p className="eyebrow">Company</p>
+      {existing ? (
+        <>
+          <p className="detail-empty">
+            Agents will not propose new openings at {trimmed}
+            {existing.expires_at
+              ? ` until ${new Date(existing.expires_at).toLocaleDateString()}`
+              : ""}
+            . Opportunities already on your board are unaffected.
+          </p>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => onUnmute(existing.id, trimmed)}
+          >
+            Unmute {trimmed}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="detail-empty">
+            Muting stops agents proposing new openings at {trimmed}. It lapses after 180 days, and
+            you can undo it here or under More &gt; Muted sources.
+          </p>
+          <ConfirmButton
+            type="button"
+            className="button secondary"
+            confirmLabel={`Confirm mute ${trimmed}`}
+            disabled={busy}
+            onConfirm={() => onMute(trimmed)}
+          >
+            Mute {trimmed}
+          </ConfirmButton>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
  * Reopen control for a closed opportunity: lets the user pick which active
  * Kanban stage to move it back into (Inbox=saved, Shortlist=shortlisted,
  * Applied=applied, Interviewing=interviewing, Offer=offer), rather than
@@ -605,6 +747,50 @@ function ReopenSection({
   );
 }
 
+function assessorLabel(assessment: MatchAssessment | undefined): string | null {
+  if (!assessment) {
+    return null;
+  }
+  const who =
+    assessment.mcp_client_id ??
+    (assessment.assessed_by === "user"
+      ? "you"
+      : assessment.assessed_by === "system"
+        ? "UpgradR"
+        : "an agent");
+  return `Scored by ${who} on ${new Date(assessment.created_at).toLocaleDateString()}`;
+}
+
+/**
+ * A disclosure rather than a hover tooltip: hover has no equivalent on touch
+ * and is awkward for keyboard users, and `<details>` gives us both for free.
+ */
+function MatchScoreExplainer() {
+  return (
+    <details className="explainer">
+      <summary aria-label="What do these numbers mean?">
+        <span aria-hidden="true">ⓘ</span> What do these numbers mean?
+      </summary>
+      <div>
+        <p>
+          <strong>Match</strong> is the assessing agent's own estimate of how well this role fits
+          your profile. UpgradR does not calculate it and does not verify it — the number is only
+          as good as the agent that produced it and the profile it read.
+        </p>
+        <p>
+          <strong>Confidence</strong> is a separate thing: how sure the agent was about the facts
+          it extracted from the posting, not how sure it is about the match. A high-confidence low
+          match means "I read this ad correctly, and it is not for you."
+        </p>
+        <p>
+          Treat both as a starting point for your own judgement. The strengths and gaps below are
+          usually more informative than the score.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 function MatchSection({
   application,
   matchAssessments,
@@ -612,6 +798,11 @@ function MatchSection({
   application: ApplicationDetailRecord;
   matchAssessments: MatchAssessment[];
 }) {
+  // Assessments arrive newest-first from the API, so the first row describes
+  // the score denormalized onto the application itself.
+  const latest = matchAssessments[0];
+  const provenance = assessorLabel(latest);
+
   return (
     <section className="detail-section">
       <p className="eyebrow">Match assessment</p>
@@ -622,9 +813,11 @@ function MatchSection({
           <p>
             <strong>{application.match_score}% match</strong>
             {application.confidence !== null
-              ? ` · ${Math.round(application.confidence * 100)}% confidence`
+              ? ` · ${Math.round(application.confidence * 100)}% confidence in the extracted facts`
               : ""}
           </p>
+          {provenance ? <p className="field-hint">{provenance}</p> : null}
+          <MatchScoreExplainer />
           {application.match_rationale ? <p>{application.match_rationale}</p> : null}
           {application.strengths.length > 0 ? (
             <p>Strengths: {application.strengths.join(", ")}</p>
@@ -633,17 +826,20 @@ function MatchSection({
         </>
       )}
 
-      {matchAssessments.length > 0 ? (
-        <ul className="entity-list">
-          {matchAssessments.map((assessment) => (
-            <li className="entity-item" key={assessment.id}>
-              <div>
-                <strong>{assessment.score ?? "?"}% match</strong>
-                <span>{new Date(assessment.created_at).toLocaleString()}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {matchAssessments.length > 1 ? (
+        <>
+          <p className="field-hint">Earlier assessments</p>
+          <ul className="entity-list">
+            {matchAssessments.slice(1).map((assessment) => (
+              <li className="entity-item" key={assessment.id}>
+                <div>
+                  <strong>{assessment.score ?? "?"}% match</strong>
+                  <span>{assessorLabel(assessment)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
     </section>
   );

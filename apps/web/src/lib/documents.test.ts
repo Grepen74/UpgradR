@@ -15,6 +15,7 @@ const applications: ApplicationSummary[] = [
     match_score: null,
     confidence: null,
     mcp_client_id: null,
+    board_position: 0,
     created_at: "2024-01-01T00:00:00.000Z",
     updated_at: "2024-01-01T00:00:00.000Z",
     labels: [],

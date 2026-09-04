@@ -99,17 +99,28 @@ export function canonicalizeJobUrl(sourceUrl: string): string {
   return url.toString();
 }
 
+/**
+ * Mirrors `app.fingerprint_token()` byte for byte.
+ *
+ * Company suppressions are stored as this token rather than as typed text, so
+ * anything that needs to ask "is this company already muted?" has to normalize
+ * the same way. Exported rather than left inline because getting it subtly
+ * wrong would show a mute control as available on a company that is in fact
+ * already muted.
+ */
+export function fingerprintToken(value: string): string {
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
 export function proposalFingerprint(
   proposal: Pick<JobProposalInput, "companyName" | "title" | "location">,
 ): string {
   return [proposal.companyName, proposal.title, proposal.location ?? ""]
-    .map((value) =>
-      value
-        .normalize("NFKD")
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, " ")
-        .trim(),
-    )
+    .map(fingerprintToken)
     .join("|");
 }
 

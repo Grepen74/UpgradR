@@ -6,7 +6,6 @@ import { isTerminalStatus } from "@upgradr/domain";
 import {
   api,
   type ApplicationSummary,
-  type CandidateProfile,
   type DashboardSummary,
   type SessionUser,
   type TaskSummary,
@@ -15,6 +14,7 @@ import { ActivityTab } from "./ActivityTab";
 import { AccountTab } from "./AccountTab";
 import { AnalyticsTab } from "./AnalyticsTab";
 import { ClosedOpportunitiesTab } from "./ClosedOpportunitiesTab";
+import { SuppressionsTab } from "./SuppressionsTab";
 import { CompaniesTab } from "./CompaniesTab";
 import { ConnectedAgentsTab } from "./ConnectedAgentsTab";
 import { ConsentPage } from "./ConsentPage";
@@ -28,6 +28,7 @@ import { StatusMessage } from "./components/Feedback";
 import { useOpportunityRoute } from "./lib/routing";
 import { isTaskOverdue } from "./lib/tasks";
 import { ProfileImportsTab } from "./ProfileImportsTab";
+import { ProfileTab } from "./ProfileTab";
 
 // Top-level workspace sections. Overview is the active Kanban board (the
 // default landing content); Summary holds the metrics/recent-opportunities
@@ -36,7 +37,7 @@ import { ProfileImportsTab } from "./ProfileImportsTab";
 // ProfileMenu/profileMenuItems below), and the remaining secondary sections
 // live behind the More hub (see MoreSubTab/moreItems), to keep the top-level
 // nav from getting crowded.
-type DashboardTab = "overview" | "summary" | "more" | "account" | "profile" | "imports" | "preferences";
+type DashboardTab = "overview" | "summary" | "more" | "account" | "profile" | "imports";
 
 const dashboardTabs: { id: DashboardTab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -53,7 +54,8 @@ type MoreSubTab =
   | "documents"
   | "analytics"
   | "agents"
-  | "closed";
+  | "closed"
+  | "muted";
 
 const moreItems: { id: MoreSubTab; label: string; description: string }[] = [
   { id: "tasks", label: "Follow-ups", description: "Tasks and reminders tied to your opportunities." },
@@ -65,14 +67,14 @@ const moreItems: { id: MoreSubTab; label: string; description: string }[] = [
   { id: "analytics", label: "Analytics", description: "Trends across your pipeline." },
   { id: "agents", label: "Connected Agents", description: "MCP clients authorized on your account." },
   { id: "closed", label: "Closed opportunities", description: "Opportunities you've closed out, with their outcome." },
+  { id: "muted", label: "Muted sources", description: "Companies and roles that are never proposed again." },
 ];
 
-type ProfileMenuTab = "profile" | "imports" | "preferences" | "account";
+type ProfileMenuTab = "profile" | "imports" | "account";
 
 const profileMenuItems: { id: ProfileMenuTab; label: string }[] = [
   { id: "profile", label: "Profile" },
   { id: "imports", label: "Profile imports" },
-  { id: "preferences", label: "Preferences" },
   { id: "account", label: "Account" },
 ];
 
@@ -345,6 +347,7 @@ function Dashboard({
             {moreSubTab === "documents" ? <DocumentsTab applications={applications} /> : null}
             {moreSubTab === "analytics" ? <AnalyticsTab /> : null}
             {moreSubTab === "agents" ? <ConnectedAgentsTab /> : null}
+            {moreSubTab === "muted" ? <SuppressionsTab /> : null}
             {moreSubTab === "closed" ? (
               <ClosedOpportunitiesTab
                 applications={closedApplications}
@@ -354,9 +357,13 @@ function Dashboard({
           </div>
         )
       ) : null}
-      {tab === "profile" ? <ProfileTab /> : null}
+      {tab === "profile" ? (
+        <>
+          <ProfileTab />
+          <PreferencesTab />
+        </>
+      ) : null}
       {tab === "imports" ? <ProfileImportsTab /> : null}
-      {tab === "preferences" ? <PreferencesTab /> : null}
       {tab === "account" ? <AccountTab onAccountDeleted={onAccountDeleted} /> : null}
 
       {selectedApplicationId ? (
@@ -653,109 +660,6 @@ function TasksTab({ applications }: { applications: ApplicationSummary[] }) {
     </>
   );
 }
-
-function ProfileTab() {
-  const [profile, setProfile] = useState<CandidateProfile>();
-  const [headline, setHeadline] = useState("");
-  const [summary, setSummary] = useState("");
-  const [message, setMessage] = useState<string>();
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    void api
-      .getProfile()
-      .then(({ profile: loaded }) => {
-        setProfile(loaded);
-        setHeadline(loaded.headline ?? "");
-        setSummary(loaded.summary ?? "");
-      })
-      .catch((error) => {
-        setMessage(error instanceof Error ? error.message : "Unable to load candidate profile.");
-      });
-  }, []);
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage(undefined);
-
-    try {
-      const { profile: saved } = await api.updateProfile({
-        headline: headline.trim() ? headline.trim() : null,
-        summary: summary.trim() ? summary.trim() : null,
-      });
-      setProfile(saved);
-      setMessage("Saved.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save candidate profile.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <article className="panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">Candidate profile</p>
-          <h2>How agents match you with opportunities</h2>
-          <p>
-            Connected agents use this information to understand who you are, evaluate job fit,
-            and search for relevant opportunities.
-          </p>
-        </div>
-        {profile ? (
-          <span className={`pill${profile.is_confirmed ? "" : " pill-muted"}`}>
-            {profile.is_confirmed ? "Reviewed" : "Needs review"}
-          </span>
-        ) : null}
-      </div>
-
-      {profile === undefined ? (
-        <p>Loading profile...</p>
-      ) : (
-        <form className="stacked-form" onSubmit={(event) => void save(event)}>
-          <div>
-            <label htmlFor="headline">Headline</label>
-            <input
-              id="headline"
-              maxLength={240}
-              value={headline}
-              onChange={(event) => setHeadline(event.target.value)}
-              placeholder="Senior iOS Engineer"
-            />
-          </div>
-          <div>
-            <label htmlFor="summary">Summary</label>
-            <textarea
-              id="summary"
-              rows={6}
-              maxLength={8_000}
-              value={summary}
-              onChange={(event) => setSummary(event.target.value)}
-              placeholder="A short summary of your experience and what you're looking for next."
-            />
-          </div>
-          <div className="form-actions">
-            {message ? (
-              <StatusMessage>{message}</StatusMessage>
-            ) : profile.last_reviewed_at ? (
-              <StatusMessage>
-                Last reviewed {new Date(profile.last_reviewed_at).toLocaleDateString()}
-              </StatusMessage>
-            ) : (
-              <span />
-            )}
-            <button className="button primary" disabled={saving}>
-              {saving ? "Saving..." : "Save profile"}
-            </button>
-          </div>
-        </form>
-      )}
-    </article>
-  );
-}
-
 
 function Metric({
   value,

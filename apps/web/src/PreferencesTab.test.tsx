@@ -12,6 +12,7 @@ const LOADED = {
   locations: [],
   remotePolicy: "flexible",
   minimumCompensation: null,
+  minimumCompensationPeriod: "month",
   compensationCurrency: null,
   industries: [],
   excludedCompanies: [],
@@ -172,7 +173,8 @@ describe("PreferencesTab", () => {
 
     fireEvent.change(screen.getByLabelText(/remote policy/i), { target: { value: "remote" } });
     fireEvent.change(screen.getByLabelText(/minimum compensation/i), { target: { value: "85000" } });
-    fireEvent.change(screen.getByLabelText(/currency/i), { target: { value: "SEK" } });
+    fireEvent.change(screen.getByLabelText(/compensation period/i), { target: { value: "year" } });
+    fireEvent.change(screen.getByLabelText(/^currency/i), { target: { value: "SEK" } });
     fireEvent.click(screen.getByRole("button", { name: /save preferences/i }));
 
     await waitFor(() => {
@@ -180,6 +182,7 @@ describe("PreferencesTab", () => {
         expect.objectContaining({
           remotePolicy: "remote",
           minimumCompensation: 85000,
+          minimumCompensationPeriod: "year",
           compensationCurrency: "SEK",
         }),
       );

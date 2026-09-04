@@ -103,6 +103,7 @@ describe("create_job_proposals", () => {
         compensation_min: null,
         compensation_max: null,
         compensation_currency: null,
+        compensation_period: null,
         match_score: 82,
         match_rationale: null,
         strengths: ["Swift"],
@@ -121,6 +122,7 @@ describe("create_job_proposals", () => {
         compensation_min: null,
         compensation_max: null,
         compensation_currency: null,
+        compensation_period: null,
         match_score: null,
         match_rationale: null,
         strengths: [],
@@ -205,7 +207,20 @@ describe("list_known_opportunity_keys", () => {
   ];
 
   it("returns compact dedup keys and flags closed opportunities", async () => {
-    const get = vi.fn(async () => rows);
+    // The tool reads two tables, so the fake has to answer per path rather
+    // than returning the same rows for anything it is asked.
+    const get = vi.fn(async (path: string) =>
+      path === "opportunity_suppressions"
+        ? [
+            {
+              key_type: "company",
+              key_value: "initech",
+              reason: "Too many rejections",
+              expires_at: "2026-09-01T00:00:00.000Z",
+            },
+          ]
+        : rows,
+    );
     const supabase = fakeSupabase({ get: get as unknown as SupabaseRestClient["get"] });
     const handlers = registerTools({ auth: authWith(["opportunities:read"]), supabase });
 
@@ -234,10 +249,38 @@ describe("list_known_opportunity_keys", () => {
           updatedAt: "2026-02-01T00:00:00.000Z",
         },
       ],
+      // Returned alongside the keys because an agent that filtered only on
+      // rows that exist would keep proposing a muted company forever.
+      suppressions: [
+        {
+          keyType: "company",
+          keyValue: "initech",
+          reason: "Too many rejections",
+          expiresAt: "2026-09-01T00:00:00.000Z",
+        },
+      ],
       limit: 2,
       offset: 0,
       hasMore: true,
     });
+  });
+
+  it("excludes expired suppressions so agents never see a rule that is not enforced", async () => {
+    const calls: Array<{ path: string; options: { filters?: Record<string, string> } }> = [];
+    const get = vi.fn(async (path: string, options: { filters?: Record<string, string> }) => {
+      calls.push({ path, options });
+      return [];
+    });
+    const supabase = fakeSupabase({ get: get as unknown as SupabaseRestClient["get"] });
+    const handlers = registerTools({ auth: authWith(["opportunities:read"]), supabase });
+
+    await handlers.get("list_known_opportunity_keys")!({});
+
+    const call = calls.find((entry) => entry.path === "opportunity_suppressions");
+    expect(call).toBeDefined();
+    // create_job_proposals ignores lapsed rules, so listing them here would
+    // have an agent filter out candidates the server would happily accept.
+    expect(call?.options.filters?.["or"]).toMatch(/expires_at\.is\.null,expires_at\.gt\./);
   });
 
   it("passes an updatedSince cursor through as a bounded PostgREST filter", async () => {

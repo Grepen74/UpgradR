@@ -54,6 +54,8 @@ const knownOpportunityKeysSchema = z.object({
 const OPPORTUNITY_SELECT =
   "id,title,company_name,location,source_url,current_status,created_at";
 
+const SUPPRESSION_KEY_SELECT = "key_type,key_value,reason,expires_at";
+
 const OPPORTUNITY_KEY_SELECT =
   "id,canonical_source_url,source_provider,external_id,dedup_fingerprint,current_status,updated_at";
 
@@ -180,6 +182,7 @@ export function registerOpportunityTools(server: McpServer, ctx: ToolContext): v
         "Return the de-duplication keys for every opportunity the user already tracks, including closed ones, so an agent can filter its candidates locally before calling create_job_proposals. " +
         "Each entry carries the canonical source URL, the source provider and its external job id, a normalized company|title|location fingerprint, and the current status. " +
         "An entry with isClosed true means the user already rejected, withdrew from, dismissed, or archived that opportunity: do not propose it again. " +
+        "The suppressions list carries rules the user set explicitly -- a muted company, a muted role, or a posting they closed -- and applies even to opportunities whose row has since been deleted. Never propose anything matching one; create_job_proposals will refuse it. " +
         "Fetch this once per run (paginate with offset, or pass updatedSince to fetch only what changed) rather than searching per candidate.",
       inputSchema: knownOpportunityKeysSchema,
     },
@@ -209,9 +212,37 @@ export function registerOpportunityTools(server: McpServer, ctx: ToolContext): v
         updatedAt: row["updated_at"],
       }));
 
+      // Suppressions are the user's stated intent rather than a record of what
+      // exists, so they are returned alongside the keys: an agent that filters
+      // only on existing rows would keep proposing a muted company forever.
+      // Expired rules are excluded here so the agent never sees a rule that
+      // create_job_proposals would not actually enforce.
+      const suppressionRows = await supabase.get<Array<Record<string, unknown>>>(
+        "opportunity_suppressions",
+        {
+          select: SUPPRESSION_KEY_SELECT,
+          filters: { or: `(expires_at.is.null,expires_at.gt.${new Date().toISOString()})` },
+          order: "created_at.desc",
+          limit: 200,
+        },
+      );
+
+      const suppressions = suppressionRows.map((row) => ({
+        keyType: row["key_type"],
+        keyValue: row["key_value"],
+        reason: row["reason"],
+        expiresAt: row["expires_at"],
+      }));
+
       // hasMore lets an agent page deterministically without guessing at a
       // total it does not need.
-      const result = { keys, limit: boundedLimit, offset: boundedOffset, hasMore: rows.length === boundedLimit };
+      const result = {
+        keys,
+        suppressions,
+        limit: boundedLimit,
+        offset: boundedOffset,
+        hasMore: rows.length === boundedLimit,
+      };
 
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

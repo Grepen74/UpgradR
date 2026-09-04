@@ -7,10 +7,17 @@ import { requiredScopesFor } from "../auth/scope-catalog";
 import { toToolErrorResult } from "../http/errors";
 import type { ToolContext } from "./types";
 
-interface ScopedToolConfig<Input> {
+interface ScopedToolConfig<Input, Output = unknown> {
   title?: string;
   description: string;
   inputSchema: z.ZodType<Input>;
+  /**
+   * Declaring this is what makes the `.describe()` calls on the response
+   * contract reach clients at all: without it they are dead weight, visible
+   * only in the repository. Tools that declare it must also return
+   * `structuredContent`, which the SDK validates against this schema.
+   */
+  outputSchema?: z.ZodType<Output>;
   annotations?: ToolAnnotations;
 }
 
@@ -25,11 +32,11 @@ interface ScopedToolConfig<Input> {
  * connection failing. Endpoint-wide access is separately gated by
  * `MCP_REQUIRED_SCOPE` in `requireBearerAuth` (see `index.ts`).
  */
-export function registerScopedTool<Input>(
+export function registerScopedTool<Input, Output = unknown>(
   server: McpServer,
   ctx: ToolContext,
   name: McpToolName,
-  config: ScopedToolConfig<Input>,
+  config: ScopedToolConfig<Input, Output>,
   handler: (input: Input, ctx: ToolContext) => Promise<CallToolResult>,
 ): void {
   server.registerTool(
@@ -37,6 +44,7 @@ export function registerScopedTool<Input>(
     {
       description: config.description,
       inputSchema: config.inputSchema,
+      ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
       ...(config.title ? { title: config.title } : {}),
       ...(config.annotations ? { annotations: config.annotations } : {}),
     },

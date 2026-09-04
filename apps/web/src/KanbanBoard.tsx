@@ -23,6 +23,27 @@ function canonicalStatusForDrop(stage: Exclude<KanbanStage, "closed">): Applicat
   return kanbanStageCanonicalStatus[stage];
 }
 
+/**
+ * Produces the destination column's complete new order.
+ *
+ * `index` is a *gap* in the column as the user currently sees it, so for a
+ * same-column move it is measured against a list that still contains the
+ * dragged card. Removing the card first shifts every gap after its old
+ * position down by one, which has to be compensated for or a card dragged
+ * downwards always lands one slot too far.
+ */
+export function orderAfterDrop(
+  columnIds: readonly string[],
+  movedId: string,
+  index: number,
+): string[] {
+  const from = columnIds.indexOf(movedId);
+  const without = columnIds.filter((id) => id !== movedId);
+  const shifted = from >= 0 && from < index ? index - 1 : index;
+  const clamped = Math.max(0, Math.min(shifted, without.length));
+  return [...without.slice(0, clamped), movedId, ...without.slice(clamped)];
+}
+
 export function KanbanBoard({
   applications,
   closedCount = 0,
@@ -42,7 +63,12 @@ export function KanbanBoard({
   const [statusMessage, setStatusMessage] = useState<string>();
   const [updatingId, setUpdatingId] = useState<string>();
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
-  const [dragOverStage, setDragOverStage] = useState<Exclude<KanbanStage, "closed">>();
+  // Where a dragged card would land: the column, and the gap index within it.
+  const [dropTarget, setDropTarget] = useState<{
+    stage: Exclude<KanbanStage, "closed">;
+    index: number;
+  }>();
+  const [announcement, setAnnouncement] = useState("");
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -105,39 +131,92 @@ export function KanbanBoard({
     }
   }
 
-  async function changeStatus(applicationId: string, status: ApplicationStatus) {
-    setUpdatingId(applicationId);
+  /**
+   * Applies a drop (or a keyboard move) of one card into `stage` at `index`.
+   *
+   * Cross-column moves are still refused when the status taxonomy forbids the
+   * transition, exactly as before -- position is a second dimension on top of
+   * the pipeline rules, not a way around them.
+   */
+  async function moveCard(
+    application: ApplicationSummary,
+    stage: Exclude<KanbanStage, "closed">,
+    index: number,
+  ) {
+    const sourceStage = stageForStatus(application.current_status);
+    const sameColumn = sourceStage === stage;
+    const nextStatus = sameColumn ? application.current_status : canonicalStatusForDrop(stage);
+
+    if (!sameColumn && !availableNextStatuses(application.current_status).includes(nextStatus)) {
+      setStatusMessage(
+        `Can't move directly from ${application.current_status} to ${kanbanStageLabels[stage]}.`,
+      );
+      return;
+    }
+
+    const columnIds = (columns.get(stage) ?? []).map((item) => item.id);
+    const orderedIds = orderAfterDrop(columnIds, application.id, index);
+
+    if (sameColumn && orderedIds.join() === columnIds.join()) {
+      return;
+    }
+
+    setUpdatingId(application.id);
     setStatusMessage(undefined);
     try {
-      await api.updateApplicationStatus(applicationId, status);
+      await api.moveApplicationOnBoard(application.id, nextStatus, orderedIds);
+      setAnnouncement(
+        `${application.title} moved to position ${orderedIds.indexOf(application.id) + 1} of ${
+          orderedIds.length
+        } in ${kanbanStageLabels[stage]}.`,
+      );
       await onRefresh();
     } catch (error) {
-      setStatusMessage(
-        error instanceof Error ? error.message : "Unable to update application status.",
-      );
+      setStatusMessage(error instanceof Error ? error.message : "Unable to move opportunity.");
     } finally {
       setUpdatingId(undefined);
     }
   }
 
-  function handleDrop(
-    stage: Exclude<KanbanStage, "closed">,
-    applicationId: string,
-    currentStatus: ApplicationStatus,
+  /**
+   * Keyboard equivalent of a drag, driven from each card's reorder handle.
+   * Up/Down move within the column, Left/Right across columns, so the board is
+   * operable without a pointer.
+   */
+  function moveByKeyboard(
+    application: ApplicationSummary,
+    direction: "up" | "down" | "left" | "right",
   ) {
-    setDragOverStage(undefined);
-    if (stageForStatus(currentStatus) === stage) {
+    const stage = stageForStatus(application.current_status);
+    if (stage === "closed") {
       return;
     }
-    const nextStatus = canonicalStatusForDrop(stage);
-    if (nextStatus === currentStatus) {
+    const columnIds = (columns.get(stage) ?? []).map((item) => item.id);
+    const currentIndex = columnIds.indexOf(application.id);
+
+    if (direction === "up" || direction === "down") {
+      const target = currentIndex + (direction === "up" ? -1 : 1);
+      if (target < 0 || target >= columnIds.length) {
+        return;
+      }
+      // moveCard takes a *drop* index: a gap in the list as the user currently
+      // sees it, which still contains this card. `target` is the final index
+      // the card should end up at. Moving down, those differ by one, because
+      // removing the card first closes the gap it used to occupy -- so passing
+      // `target` straight through produced the unchanged order and the move
+      // was silently dropped by the no-op guard below.
+      void moveCard(application, stage, direction === "down" ? target + 1 : target);
       return;
     }
-    if (!availableNextStatuses(currentStatus).includes(nextStatus)) {
-      setStatusMessage(`Can't move directly from ${currentStatus} to ${kanbanStageLabels[stage]}.`);
+
+    const stageIndex = activeKanbanStages.indexOf(stage);
+    const targetStage = activeKanbanStages[stageIndex + (direction === "left" ? -1 : 1)];
+    if (!targetStage) {
       return;
     }
-    void changeStatus(applicationId, nextStatus);
+    // Entering a new column, the card goes where it sat in the old one, which
+    // keeps a card the user had at the top near the top.
+    void moveCard(application, targetStage, currentIndex);
   }
 
   return (
@@ -215,22 +294,34 @@ export function KanbanBoard({
         <div className="kanban-board" role="group" aria-label="Opportunity pipeline, organized by stage">
           {activeKanbanStages.map((stage) => {
             const stageApplications = columns.get(stage) ?? [];
+            const dropIndex = dropTarget?.stage === stage ? dropTarget.index : undefined;
             return (
               <section
-                className={`kanban-column${dragOverStage === stage ? " drag-over" : ""}`}
+                className={`kanban-column${dropIndex === undefined ? "" : " drag-over"}`}
                 key={stage}
                 aria-label={`${kanbanStageLabels[stage]} (${stageApplications.length})`}
                 onDragOver={(event) => {
                   event.preventDefault();
-                  setDragOverStage(stage);
+                  // Dragging over the column's padding (not a card) means
+                  // "the end of this column".
+                  setDropTarget((current) =>
+                    current?.stage === stage ? current : { stage, index: stageApplications.length },
+                  );
                 }}
-                onDragLeave={() => setDragOverStage((current) => (current === stage ? undefined : current))}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    return;
+                  }
+                  setDropTarget((current) => (current?.stage === stage ? undefined : current));
+                }}
                 onDrop={(event) => {
                   event.preventDefault();
                   const applicationId = event.dataTransfer.getData("text/plain");
+                  const index = dropIndex ?? stageApplications.length;
+                  setDropTarget(undefined);
                   const application = applications.find((item) => item.id === applicationId);
                   if (application) {
-                    handleDrop(stage, applicationId, application.current_status);
+                    void moveCard(application, stage, index);
                   }
                 }}
               >
@@ -243,36 +334,72 @@ export function KanbanBoard({
                   {stageApplications.length === 0 ? (
                     <p className="kanban-column-empty">No opportunities here.</p>
                   ) : (
-                    stageApplications.map((application) => (
-                      <OpportunityCard
-                        key={application.id}
-                        application={application}
-                        tasks={tasks}
-                        updating={updatingId === application.id}
-                        onOpen={() => onOpenApplication(application.id)}
-                      />
+                    stageApplications.map((application, index) => (
+                      <div key={application.id}>
+                        {dropIndex === index ? <DropIndicator /> : null}
+                        <OpportunityCard
+                          application={application}
+                          tasks={tasks}
+                          updating={updatingId === application.id}
+                          position={index + 1}
+                          columnSize={stageApplications.length}
+                          stageLabel={kanbanStageLabels[stage]}
+                          onOpen={() => onOpenApplication(application.id)}
+                          onDragOverCard={(half) =>
+                            setDropTarget({ stage, index: half === "top" ? index : index + 1 })
+                          }
+                          onDragFinished={() => setDropTarget(undefined)}
+                          onKeyboardMove={(direction) => moveByKeyboard(application, direction)}
+                        />
+                      </div>
                     ))
                   )}
+                  {dropIndex === stageApplications.length && stageApplications.length > 0 ? (
+                    <DropIndicator />
+                  ) : null}
                 </div>
               </section>
             );
           })}
         </div>
       )}
+
+      <p className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </p>
     </>
   );
+}
+
+// A card-width line drawn in the gap the dragged card would drop into. The
+// board otherwise gives no feedback about *where* in a column a drop lands,
+// only which column.
+function DropIndicator() {
+  return <div className="kanban-drop-indicator" aria-hidden="true" />;
 }
 
 function OpportunityCard({
   application,
   tasks,
   updating,
+  position,
+  columnSize,
+  stageLabel,
   onOpen,
+  onDragOverCard,
+  onDragFinished,
+  onKeyboardMove,
 }: {
   application: ApplicationSummary;
   tasks: TaskSummary[];
   updating: boolean;
+  position: number;
+  columnSize: number;
+  stageLabel: string;
   onOpen: () => void;
+  onDragOverCard: (half: "top" | "bottom") => void;
+  onDragFinished: () => void;
+  onKeyboardMove: (direction: "up" | "down" | "left" | "right") => void;
 }) {
   const applicationTasks = tasks.filter((task) => task.application_id === application.id);
   const badges = deriveAttentionBadges(application, applicationTasks);
@@ -298,6 +425,15 @@ function OpportunityCard({
       }}
       onDragEnd={() => {
         press.current.dragging = false;
+        // A drag abandoned with Escape fires no drop and no dragleave, so the
+        // indicator would otherwise stay painted where the card never landed.
+        onDragFinished();
+      }}
+      onDragOver={(event) => {
+        // Which half of the card the pointer is over decides whether the drop
+        // lands above or below it -- the same convention every board UI uses.
+        const bounds = event.currentTarget.getBoundingClientRect();
+        onDragOverCard(event.clientY < bounds.top + bounds.height / 2 ? "top" : "bottom");
       }}
       onClick={(event) => {
         if (press.current.dragging) {
@@ -316,13 +452,41 @@ function OpportunityCard({
         onOpen();
       }}
     >
-      <button type="button" className="kanban-card-open" onClick={onOpen}>
-        <strong>{application.title}</strong>
-        <span>
-          {application.company_name}
-          {application.location ? ` · ${application.location}` : ""}
-        </span>
-      </button>
+      <div className="kanban-card-top">
+        <button type="button" className="kanban-card-open" onClick={onOpen}>
+          <strong>{application.title}</strong>
+          <span>
+            {application.company_name}
+            {application.location ? ` · ${application.location}` : ""}
+          </span>
+        </button>
+
+        {/* Dragging is unavailable to keyboard and most screen-reader users,
+            so the same reordering is bound to the arrow keys here. */}
+        <button
+          type="button"
+          className="kanban-card-grip"
+          aria-label={`Reorder ${application.title}, position ${position} of ${columnSize} in ${stageLabel}. Use the arrow keys to move it.`}
+          title="Drag, or use the arrow keys, to move this card"
+          onKeyDown={(event) => {
+            const directions = {
+              ArrowUp: "up",
+              ArrowDown: "down",
+              ArrowLeft: "left",
+              ArrowRight: "right",
+            } as const;
+            const direction = directions[event.key as keyof typeof directions];
+            if (!direction) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            onKeyboardMove(direction);
+          }}
+        >
+          <span aria-hidden="true">⠿</span>
+        </button>
+      </div>
 
       <div className="kanban-card-meta">
         {application.match_score === null ? null : (
