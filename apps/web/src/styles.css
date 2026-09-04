@@ -2396,6 +2396,109 @@ input[type="radio"] {
   cursor: grabbing;
 }
 
+/* Matches the reorder handle's geometry so the two controls on a card read as
+   a pair rather than as unrelated widgets. */
+/* The trailing row: the timestamp and the dismiss control share it. `gap`
+   rather than `justify-content: space-between`, so the control still sits
+   beside the text when the card is wide. */
+.kanban-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #777d89;
+  font-size: 0.78rem;
+}
+
+.kanban-card-dismiss {
+  display: grid;
+  place-items: center;
+  /* `margin-left: auto` is the spacer: it absorbs the free space in the footer
+     row so the control stays pinned to the trailing edge beside the
+     timestamp, instead of needing a row of its own. */
+  margin-left: auto;
+  /* Matches `.kanban-card-grip` exactly: these are the card's only two icon
+     controls, and a 24px target is already marginal for touch. */
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-subtle);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--motion),
+    background var(--motion),
+    color var(--motion);
+}
+
+.kanban-card-dismiss svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.kanban-card-dismiss:hover,
+.kanban-card-dismiss:focus-visible {
+  border-color: rgb(179 64 27 / 35%);
+  background: rgb(179 64 27 / 8%);
+  color: var(--danger);
+}
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(20 15 40 / 45%);
+  backdrop-filter: blur(2px);
+  animation: detail-fade 160ms ease;
+}
+
+.confirm-dialog {
+  width: min(440px, 100%);
+  padding: 26px;
+  border: 1px solid rgb(42 38 57 / 10%);
+  border-radius: 20px;
+  /* Deliberately more opaque than `--surface`: a translucent panel over a
+     blurred backdrop makes the text it is asking you to read harder to read. */
+  background: rgb(255 255 255 / 97%);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 30px 80px rgb(45 39 72 / 24%);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+}
+
+.confirm-dialog-body p {
+  margin: 0 0 10px;
+  color: var(--ink-muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog-backdrop {
+    animation: none;
+  }
+}
+
 /* Marks the gap a dragged card would drop into. Sized to stay visible without
    shifting the cards around it as the target moves between gaps. */
 .kanban-drop-indicator {

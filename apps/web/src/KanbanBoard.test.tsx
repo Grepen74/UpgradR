@@ -760,3 +760,101 @@ describe("KanbanBoard reordering", () => {
     expect(onOpenApplication).not.toHaveBeenCalled();
   });
 });
+
+describe("dismissing an opportunity from the board", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  function renderBoard() {
+    const calls: { url: string; body: unknown }[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return jsonResponse({ application: makeApplication({ current_status: "dismissed" }) });
+    });
+
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const onOpenApplication = vi.fn();
+    render(
+      <KanbanBoard
+        applications={[makeApplication({ title: "Senior Engineer" })]}
+        onRefresh={onRefresh}
+        onOpenApplication={onOpenApplication}
+      />,
+    );
+    return { calls, onRefresh, onOpenApplication };
+  }
+
+  it("asks before dismissing, and explains that the row is kept", () => {
+    renderBoard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Senior Engineer" }));
+
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText(/kept under More/i)).toBeVisible();
+    // The whole reason this is a dismissal rather than a delete.
+    expect(within(dialog).getByText(/will not propose this posting again/i)).toBeVisible();
+  });
+
+  it("does nothing at all when the confirmation is cancelled", async () => {
+    const { calls, onRefresh } = renderBoard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Senior Engineer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(calls).toHaveLength(0);
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it("transitions to dismissed rather than deleting the opportunity", async () => {
+    const { calls, onRefresh } = renderBoard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Senior Engineer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    // A DELETE here would drop the row, and with it the suppression that stops
+    // an agent re-proposing the posting.
+    expect(calls[0]?.url).toContain("/status");
+    expect(calls[0]?.body).toMatchObject({ status: "dismissed" });
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled());
+  });
+
+  it("does not open the detail view when the trash control is pressed", () => {
+    const { onOpenApplication } = renderBoard();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Senior Engineer" }));
+
+    expect(onOpenApplication).not.toHaveBeenCalled();
+  });
+
+  it("reports a failure instead of leaving the card looking dismissed", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/api/tasks")) {
+        return jsonResponse({ tasks: [] });
+      }
+      return jsonResponse({ error: "nope" }, { status: 500 });
+    });
+
+    render(
+      <KanbanBoard
+        applications={[makeApplication({ title: "Senior Engineer" })]}
+        onRefresh={vi.fn().mockResolvedValue(undefined)}
+        onOpenApplication={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss Senior Engineer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(await screen.findByRole("status")).toBeTruthy();
+    expect(screen.getByText("Senior Engineer")).toBeVisible();
+  });
+});

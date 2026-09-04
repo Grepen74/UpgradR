@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 
 import { api, type ApplicationSummary, type TaskSummary } from "./api";
 import { StatusMessage } from "./components/Feedback";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import {
   ATTENTION_BADGE_LABELS,
   availableNextStatuses,
@@ -69,6 +70,10 @@ export function KanbanBoard({
     index: number;
   }>();
   const [announcement, setAnnouncement] = useState("");
+  // The card whose dismissal is awaiting confirmation. Held here rather than
+  // in the card so only one dialog can ever be open, and so the modal is not
+  // nested inside a draggable article.
+  const [pendingDismissal, setPendingDismissal] = useState<ApplicationSummary>();
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -173,6 +178,32 @@ export function KanbanBoard({
       await onRefresh();
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Unable to move opportunity.");
+    } finally {
+      setUpdatingId(undefined);
+    }
+  }
+
+  /**
+   * Takes an opportunity off the board by dismissing it.
+   *
+   * Deliberately a status transition and not a delete. `dismissed` is a
+   * terminal status, so the card leaves the active board, but the row survives
+   * -- and that is the point: an `after update` trigger records a permanent
+   * suppression for the posting's canonical URL and provider job id, so no
+   * later agent run re-proposes it. Deleting the row instead would erase the
+   * de-duplication memory along with the card, which is exactly the case
+   * `opportunity_suppressions` exists to cover.
+   */
+  async function dismissOpportunity(application: ApplicationSummary) {
+    setUpdatingId(application.id);
+    setStatusMessage(undefined);
+    try {
+      await api.updateApplicationStatus(application.id, "dismissed");
+      setPendingDismissal(undefined);
+      setAnnouncement(`${application.title} dismissed and moved to closed opportunities.`);
+      await onRefresh();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Unable to dismiss opportunity.");
     } finally {
       setUpdatingId(undefined);
     }
@@ -345,6 +376,7 @@ export function KanbanBoard({
                           columnSize={stageApplications.length}
                           stageLabel={kanbanStageLabels[stage]}
                           onOpen={() => onOpenApplication(application.id)}
+                          onDismiss={() => setPendingDismissal(application)}
                           onDragOverCard={(half) =>
                             setDropTarget({ stage, index: half === "top" ? index : index + 1 })
                           }
@@ -363,6 +395,24 @@ export function KanbanBoard({
           })}
         </div>
       )}
+
+      {pendingDismissal ? (
+        <ConfirmDialog
+          title={`Dismiss ${pendingDismissal.title}?`}
+          confirmLabel="Dismiss"
+          busy={updatingId === pendingDismissal.id}
+          onCancel={() => setPendingDismissal(undefined)}
+          onConfirm={() => void dismissOpportunity(pendingDismissal)}
+        >
+          <p>
+            This removes {pendingDismissal.title} at {pendingDismissal.company_name} from the
+            board. It is kept under More &rsaquo; Closed, where you can reopen it.
+          </p>
+          <p>
+            Because it stays on record, connected agents will not propose this posting again.
+          </p>
+        </ConfirmDialog>
+      ) : null}
 
       <p className="sr-only" role="status" aria-live="polite">
         {announcement}
@@ -386,6 +436,7 @@ function OpportunityCard({
   columnSize,
   stageLabel,
   onOpen,
+  onDismiss,
   onDragOverCard,
   onDragFinished,
   onKeyboardMove,
@@ -397,6 +448,7 @@ function OpportunityCard({
   columnSize: number;
   stageLabel: string;
   onOpen: () => void;
+  onDismiss: () => void;
   onDragOverCard: (half: "top" | "bottom") => void;
   onDragFinished: () => void;
   onKeyboardMove: (direction: "up" | "down" | "left" | "right") => void;
@@ -493,7 +545,6 @@ function OpportunityCard({
           <span className="pill pill-muted">{application.match_score}% match</span>
         )}
         <span>{application.source_provider}</span>
-        <span>Updated {formatRelativeAge(application.updated_at)}</span>
       </div>
 
       {followUp ? (
@@ -522,6 +573,37 @@ function OpportunityCard({
           ))}
         </div>
       ) : null}
+
+      {/* The timestamp shares this trailing row with the dismiss control rather
+          than the control having a row to itself. The match score and source
+          stay up near the title: they are what the card is judged on, and
+          pushing them below the labels and badges would bury them. */}
+      <div className="kanban-card-footer">
+        <span>Updated {formatRelativeAge(application.updated_at)}</span>
+
+        {/* `margin-left: auto` is the spacer that pins this to the trailing
+            edge. Always visible rather than revealed on hover, for the same
+            reason the reorder handle is — a hover-only control does not exist
+            for touch or keyboard users. */}
+        <button
+          type="button"
+          className="kanban-card-dismiss"
+          aria-label={`Dismiss ${application.title}`}
+          title="Dismiss this opportunity"
+          onClick={onDismiss}
+        >
+          {/* An inline SVG rather than the 🗑 emoji: emoji are font-substituted
+              to a colour glyph that ignores `currentcolor`, so the hover/focus
+              shift to `--danger` would not have applied, and the shape differs
+              per platform. Matches the stroke icon style used elsewhere. */}
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M4 7h16" />
+            <path d="M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1z" />
+            <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+            <path d="M10 11v6M14 11v6" />
+          </svg>
+        </button>
+      </div>
     </article>
   );
 }
