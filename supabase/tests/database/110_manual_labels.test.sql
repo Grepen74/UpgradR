@@ -2,6 +2,7 @@
 -- public.labels / public.application_labels. See
 -- supabase/migrations/20250115121600_manual_labels.sql.
 begin;
+set local search_path to public, extensions;
 
 select plan(10);
 

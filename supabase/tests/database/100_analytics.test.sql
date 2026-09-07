@@ -1,6 +1,7 @@
 -- public.analytics_overview() and public.analytics_next_actions(): bounded,
 -- owner-scoped aggregates for the Analytics / Weekly Review surface.
 begin;
+set local search_path to public, extensions;
 
 select plan(11);
 

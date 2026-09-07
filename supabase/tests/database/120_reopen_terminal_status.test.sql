@@ -4,6 +4,7 @@
 -- status remains blocked and the history/guard invariants from
 -- 20250115120600_application_workflow.sql are preserved.
 begin;
+set local search_path to public, extensions;
 
 select plan(8);
 

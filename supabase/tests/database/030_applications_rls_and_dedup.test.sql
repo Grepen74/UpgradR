@@ -1,5 +1,6 @@
 -- RLS isolation and canonical-URL duplicate protection for applications.
 begin;
+set local search_path to public, extensions;
 
 select plan(9);
 

@@ -55,6 +55,8 @@ export function ConsentPage({ authorizationId }: { authorizationId: string }) {
           it at any time from Connected agents.
         </p>
 
+        {message ? <StatusMessage>{message}</StatusMessage> : null}
+
         {authorization ? (
           <>
             <dl className="consent-details">
@@ -109,11 +111,9 @@ export function ConsentPage({ authorizationId }: { authorizationId: string }) {
               </button>
             </div>
           </>
-        ) : message ? (
-          <StatusMessage>{message}</StatusMessage>
-        ) : (
+        ) : !message ? (
           <p>Loading authorization request...</p>
-        )}
+        ) : null}
       </article>
     </section>
   );

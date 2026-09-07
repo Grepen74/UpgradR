@@ -1,6 +1,7 @@
 -- public.mcp_grant_scopes and app.mcp_access_token_hook(): the app-owned MCP
 -- authorization grant, and the hook that turns it into a `scope` claim.
 begin;
+set local search_path to public, extensions;
 
 select plan(14);
 

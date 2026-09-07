@@ -7,6 +7,7 @@
 -- in, and that create_job_proposals actually persists the period rather than
 -- accepting it and dropping it.
 begin;
+set local search_path to public, extensions;
 
 select plan(14);
 

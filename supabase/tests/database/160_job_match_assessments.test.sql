@@ -3,6 +3,7 @@
 -- user-editable facts, and the write-only-grant visibility trap the trigger
 -- would otherwise have introduced.
 begin;
+set local search_path to public, extensions;
 
 select plan(16);
 

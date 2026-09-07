@@ -3,6 +3,7 @@
 -- MCP read-only boundary, expiry semantics, and the suppression check inside
 -- public.create_job_proposals().
 begin;
+set local search_path to public, extensions;
 
 select plan(21);
 

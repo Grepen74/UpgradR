@@ -1,0 +1,12 @@
+-- The original migration (20250115122000_mcp_grant_scopes.sql) defined RLS
+-- policies "to authenticated" but never granted the underlying table
+-- privileges the policies require -- every other table in this schema has an
+-- explicit `grant ... to authenticated` line (see e.g. applications.sql),
+-- this one was missed. RLS narrows *which* rows a role can touch; it never
+-- substitutes for the base GRANT that allows the role to touch the table at
+-- all. This went unnoticed locally because the local stack's default
+-- privileges are more permissive than a hosted project configured with
+-- "Automatically expose new tables" turned off (a deliberate choice for this
+-- project), where it surfaces as `permission denied for table
+-- mcp_grant_scopes` (42501) on the very first real consent-screen approval.
+grant select, insert, update, delete on public.mcp_grant_scopes to authenticated;

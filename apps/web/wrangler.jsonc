@@ -18,5 +18,25 @@
   },
   "vars": {
     "APP_ORIGIN": "http://localhost:8787"
+  },
+  // Deploy with `wrangler deploy --env production`. `name` is repeated here
+  // (unchanged) so Wrangler does not append "-production" to the deployed
+  // Worker's name/URL. Every REPLACE_ME below will fail loud (a build/deploy
+  // that visibly errors, or `check:deployment` reporting a bad value) rather
+  // than silently shipping a localhost/example value to production --
+  // replace with real values once the Supabase project and Cloudflare
+  // account/subdomain exist (see plan.md, "Deploying to production").
+  // SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY are not secret (publishable key is
+  // safe to commit); SUPABASE_SERVICE_ROLE_KEY is set separately via
+  // `wrangler secret put`, never as a plain var.
+  "env": {
+    "production": {
+      "name": "upgradr-web",
+      "vars": {
+        "APP_ORIGIN": "https://upgradr-web.john-ahlinder.workers.dev",
+        "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
+        "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC"
+      }
+    }
   }
 }

@@ -2,6 +2,7 @@
 -- child tables (profile_experiences here; profile_education/profile_skills
 -- share the same app.assert_owner_matches_parent() trigger and RLS shape).
 begin;
+set local search_path to public, extensions;
 
 select plan(6);
 

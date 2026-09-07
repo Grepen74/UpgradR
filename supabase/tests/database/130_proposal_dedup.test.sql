@@ -4,6 +4,7 @@
 -- public.create_job_proposals() -- including the case the product cares most
 -- about, an agent re-proposing an opportunity the user already closed.
 begin;
+set local search_path to public, extensions;
 
 select plan(16);
 

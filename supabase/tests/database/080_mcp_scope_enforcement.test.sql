@@ -1,4 +1,5 @@
 begin;
+set local search_path to public, extensions;
 
 select plan(11);
 

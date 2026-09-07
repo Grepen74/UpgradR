@@ -8,6 +8,7 @@
 -- and confirmation gate as the rest of the profile -- a leak here is the
 -- largest single disclosure the product can make.
 begin;
+set local search_path to public, extensions;
 
 select plan(10);
 

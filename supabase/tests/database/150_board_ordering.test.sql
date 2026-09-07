@@ -2,6 +2,7 @@
 -- updated_at opt-out that reordering depends on, ownership enforcement, and
 -- the combined status-move + reorder used by a cross-column drag.
 begin;
+set local search_path to public, extensions;
 
 select plan(15);
 

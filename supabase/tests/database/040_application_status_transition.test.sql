@@ -1,6 +1,7 @@
 -- transition_application_status(): atomicity, history logging, and the
 -- terminal-status guard.
 begin;
+set local search_path to public, extensions;
 
 select plan(8);
 

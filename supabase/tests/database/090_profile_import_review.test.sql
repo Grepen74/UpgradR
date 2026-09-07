@@ -3,6 +3,7 @@
 -- profile_imports row, and confirmation that MCP-authenticated callers can
 -- never reach unconfirmed import data through these functions.
 begin;
+set local search_path to public, extensions;
 
 select plan(25);
 

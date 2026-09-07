@@ -16,5 +16,27 @@
     "MCP_RESOURCE_URL": "http://localhost:8788",
     "MCP_ALLOWED_HOSTNAMES": "localhost,127.0.0.1",
     "MCP_REQUIRED_SCOPE": "mcp"
+  },
+  // Deploy with `wrangler deploy --env production`. `name` is repeated here
+  // (unchanged) so Wrangler does not append "-production" to the deployed
+  // Worker's name/URL. Every REPLACE_ME below will fail loud (discovery/
+  // `check:deployment` will visibly error) rather than silently shipping a
+  // localhost/example value to production -- replace them with real values
+  // once the Supabase project and Cloudflare account/subdomain exist (see
+  // plan.md, "Deploying to production"). None of these are secret --
+  // SUPABASE_ANON_KEY is the publishable key, safe to commit.
+  "env": {
+    "production": {
+      "name": "upgradr-mcp-worker",
+      "vars": {
+        "MCP_RESOURCE_URL": "https://upgradr-mcp-worker.john-ahlinder.workers.dev",
+        "MCP_ALLOWED_HOSTNAMES": "upgradr-mcp-worker.john-ahlinder.workers.dev",
+        "MCP_REQUIRED_SCOPE": "mcp",
+        "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
+        "SUPABASE_ANON_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC",
+        "SUPABASE_JWT_ISSUER": "https://yshjthrciysbvzddvfgf.supabase.co/auth/v1",
+        "SUPABASE_JWT_AUDIENCE": "authenticated"
+      }
+    }
   }
 }

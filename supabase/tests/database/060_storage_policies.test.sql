@@ -1,6 +1,7 @@
 -- Storage RLS policies: owner-prefixed path enforcement on the private
 -- `documents` and `profile-imports` buckets.
 begin;
+set local search_path to public, extensions;
 
 select plan(8);
 

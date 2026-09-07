@@ -1,6 +1,7 @@
 -- mcp_pending_operations: single-use confirmation, cross-account isolation,
 -- direct insert/update bypass protection, and the expiry/cleanup path.
 begin;
+set local search_path to public, extensions;
 
 select plan(19);
 

@@ -4,6 +4,7 @@
 -- unrecognized operation_type / malformed target (fail closed), and
 -- all-or-nothing rollback when a target does not exist/is not owned.
 begin;
+set local search_path to public, extensions;
 
 select plan(26);
 

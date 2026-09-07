@@ -5,6 +5,12 @@
       "url": "http://localhost:8788/mcp",
       "tools": ["*"],
       "timeout": 60000
+    },
+    "upgradr-prod": {
+      "type": "http",
+      "url": "https://upgradr-mcp-worker.john-ahlinder.workers.dev/mcp",
+      "tools": ["*"],
+      "timeout": 60000
     }
   }
 }

@@ -9,6 +9,7 @@
 -- testing recipe). `reset role;` returns to the superuser session used by
 -- pg_prove, which bypasses RLS for setup/assertions between simulated users.
 begin;
+set local search_path to public, extensions;
 
 select plan(9);
 
