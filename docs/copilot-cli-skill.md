@@ -20,9 +20,12 @@ ever see your own data.
 2. **An UpgradR account.** If you don't have one yet, go to
    <https://upgradr-web.john-ahlinder.workers.dev>, enter your email, and
    click the sign-in link it emails you (no password to remember).
-3. **The skill files.** Ask whoever shared this page with you for the
-   `upgradr-mcp-skill.zip` file (they can send it by email, Slack, AirDrop,
-   USB stick — anything works, it's just two small text files).
+3. **The skill files.** Download
+   <https://github.com/Grepen74/UpgradR/releases/latest/download/upgradr-mcp-skill.zip>
+   (this is a public link — anyone can download it, no GitHub account
+   needed). If you'd rather get it a different way, anyone who already has
+   it can also just send you the same `upgradr-mcp-skill.zip` file directly
+   (email, Slack, AirDrop, USB stick — it's only two small text files).
 4. About **10 minutes**, mostly waiting for one install to finish.
 
 ## Step 1 — Install Node.js (skip if you already use Copilot CLI)
@@ -189,8 +192,9 @@ You'll need to sign in again next time you want to use it.
   deleting something) need an extra permission you may not have granted
   yet. Sign in again and make sure the relevant option is checked on the
   consent screen.
-- **Still stuck** — ask whoever shared this skill with you; they can check
-  the server is running correctly.
+- **Still stuck** — open an issue at
+  <https://github.com/Grepen74/UpgradR/issues>, or ask whoever pointed you
+  to this page.
 
 ## For the technically curious
 
@@ -199,4 +203,9 @@ feature, used because that feature can be turned off by an organization's
 Copilot policy. It performs the same OAuth 2.1 sign-in flow a native MCP
 client would, then calls the same server. See [`docs/mcp.md`](./mcp.md) for
 the full technical design, and [`docs/mcp-tools.md`](./mcp-tools.md) for
-every tool and prompt it can use.
+every tool and prompt it can use. The skill's own source
+(`SKILL.md`/`mcp.mjs`) is versioned in this repo at
+[`skills/upgradr-mcp/`](../skills/upgradr-mcp/) — the release zip linked
+above is built from that folder, so if you have `git`, cloning the repo and
+pointing `~/.copilot/skills/upgradr-mcp` at that folder works just as well
+as downloading the zip.
