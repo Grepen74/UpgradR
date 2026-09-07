@@ -13,4 +13,5 @@ test-results/
 .turbo/
 supabase/.branches/
 supabase/.temp/
+skills/upgradr-mcp/.state/
 
