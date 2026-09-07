@@ -139,7 +139,7 @@ describe("MCP prompts", () => {
     });
 
     it("defaults the cap when the argument is blank", () => {
-      expect(render(FULL, "weekly_job_search", { maxProposals: "  " })).toContain("up to 10");
+      expect(render(FULL, "weekly_job_search", { maxProposals: "  " })).toContain("up to 15");
     });
 
     // The point of building prompts from granted scopes: an agent should never

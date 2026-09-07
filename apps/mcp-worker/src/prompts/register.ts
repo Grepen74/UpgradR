@@ -79,12 +79,12 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
         maxProposals: z
           .string()
           .optional()
-          .describe("Optional cap on how many new proposals to create. Defaults to 10."),
+          .describe("Optional cap on how many new proposals to create. Defaults to 15."),
       }),
     },
     ({ focus, maxProposals }) => {
       const scopes = grantedScopes(ctx);
-      const cap = maxProposals?.trim() || "10";
+      const cap = maxProposals?.trim() || "15";
       const sections: string[] = [
         "Run the user's weekly job search against their UpgradR workspace. Work through these steps in order — the ordering matters, and step 2 is what stops you proposing the same job twice.",
       ];
@@ -102,7 +102,14 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
       );
 
       sections.push(
-        "**3. Search.**\nUse your own web search and browsing tools. UpgradR does not search the internet; it stores what you find. Prefer the employer's own posting over an aggregator when both exist, since the canonical URL is a de-duplication key.",
+        "**3. Search — build a broad candidate pool before narrowing anything.**\n" +
+          "Use your own web search and browsing tools. UpgradR does not search the internet; it stores what you find. `maxProposals` (step 5) caps how many proposals you *save*, not how much you search — do not let it cut discovery short.\n" +
+          "- Search every target-role variant from the preferences **separately**, plus its reasonable seniority and adjacent-title permutations (an individual-contributor title also implies Staff/Principal/Lead-style variants; a lead/manager title also implies Head-of/Director-style variants) — one query per role is not enough.\n" +
+          "- Search both job aggregators and the career sites of specific employers the profile or preferences point to; when the same opening appears on both, prefer the employer's own posting, since its canonical URL is the more reliable de-duplication key.\n" +
+          "- For any paginated source, inspect at least 50 results per query, or continue until a page yields no new results, before moving to the next query.\n" +
+          "- Run at least one further, second-pass search seeded from the candidate's own distinctive experience and themes in their profile — specific domains, technologies, or systems it highlights — rather than only the literal target-role titles. This is what surfaces a genuinely adjacent opening a title-only search would miss.\n" +
+          "- Inspect each posting's full description before scoring it in step 4b; never rank or filter from a title and snippet alone.\n" +
+          "- Assemble the complete pool from all of the above first. Only then filter it against `list_known_opportunity_keys` (step 2) — deduplicating query-by-query as you go can stop you searching the rest once an early result turns out to be known.",
       );
 
       // Deliberately two steps. Collapsing them into "assess against the
@@ -131,8 +138,8 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
 
       sections.push(
         scopes.write
-          ? "**6. Report.**\nSummarize what happened: how many were created, how many returned `duplicate` or `possible_duplicate`, and how many you filtered out yourself in step 2. Call out anything you deliberately skipped and why. Do not present agent-sourced facts as verified — they are not."
-          : "**6. Report.**\nSummarize what you found and what you filtered out, and be explicit that nothing was written to the workspace.",
+          ? "**6. Report.**\nSummarize what happened: how many were created, how many returned `duplicate` or `possible_duplicate`, and how many you filtered out yourself in step 2. Report your search coverage too: which sources and queries you ran (including the seniority/adjacent-title variants and the second-pass thematic search from step 3), roughly how many results you inspected per query, and how many candidates you evaluated in total before narrowing. Call out anything you deliberately skipped and why. Do not present agent-sourced facts as verified — they are not."
+          : "**6. Report.**\nSummarize what you found and what you filtered out, including your search coverage (sources, queries, and roughly how many results you inspected), and be explicit that nothing was written to the workspace.",
       );
 
       if (focus?.trim()) {
