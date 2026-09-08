@@ -49,22 +49,45 @@ has two restrictions that only surface once real usage starts (found
   all -- this is a hard blocker for the "share with colleagues" goal on its
   own, independent of the rate limit.
 
-Both are lifted entirely by configuring a custom SMTP provider under
-`[auth.email.smtp]` in `config.toml` (pushed with `supabase config push`) or
-the equivalent dashboard page (Authentication → Emails → SMTP Settings).
-**Brevo** is the recommended provider for this project: 300 emails/day free,
-and does not require owning a domain (a single verified sender address is
-enough, via Brevo's own confirmation-email flow) -- unlike Resend, whose free
-tier requires a verified domain before it will deliver to anyone other than
-the account owner. Store the SMTP password as a local environment variable
-and reference it from `config.toml` as `pass = "env(VAR_NAME)"` so it is
-never committed; `supabase config push` reads it from the shell at push
-time only.
+Both are lifted entirely by configuring a custom SMTP provider, via the
+Supabase Dashboard (Project Settings → Authentication → SMTP Settings) --
+**not** via `config.toml`/`supabase config push`; see "A `config push` trap"
+below for why. `config.toml`'s `[auth.email.smtp]` section exists purely as
+a documentation-accurate mirror of what is set in the Dashboard, so anyone
+reading the repo can see the shape of the config without needing dashboard
+access. **Brevo** is the recommended provider for this project: 300
+emails/day free, and does not require owning a domain (a single verified
+sender address is enough, via Brevo's own confirmation-email flow) --
+unlike Resend, whose free tier requires a verified domain before it will
+deliver to anyone other than the account owner.
 
-The email template sent (subject and body) is configured independently, via
-`[auth.email.template.magic_link]` pointing at `supabase/templates/
-magic_link.html` -- Supabase's stock template does not mention the
-product name at all, only "Supabase", until a project overrides it.
+The email template sent (subject and body) is likewise configured directly
+via the Dashboard (Authentication → Email Templates → Magic Link), mirrored
+into `[auth.email.template.magic_link]` pointing at `supabase/templates/
+magic_link.html` for the same documentation reason -- Supabase's stock
+template does not mention the product name at all, only "Supabase", until a
+project overrides it.
+
+### A `config push` trap: never run it against this project again
+
+`supabase config push` pushes a config.toml section wholesale -- there is
+no per-field push. This project's `config.toml` necessarily also carries
+local-dev-only values needed for `supabase start` (`site_url =
+"http://localhost:8787"`, `additional_redirect_urls =
+["http://localhost:8787"]`), because the same file has no separate
+staging/production variant. Every `config push`, regardless of which
+section motivated it, therefore also silently overwrites the hosted
+project's production Site URL and Redirect URLs with those localhost
+values -- breaking magic-link/OAuth redirects (they land on
+`localhost:8787` instead of the deployed app) until manually re-set by hand
+in the Dashboard (Authentication → URL Configuration). This has happened
+twice (2026-09-08, once when the SMTP settings were first added, again
+when only the email template was later updated) -- a "remember to
+re-check afterward" reminder was tried and the regression still recurred a
+second time, so the rule is now absolute: **do not run `supabase config
+push` for this project.** Make SMTP and email-template changes directly in
+the Dashboard (see above), then mirror the change back into `config.toml`
+for documentation only.
 
 Required values:
 

@@ -75,15 +75,26 @@ enabled = false
 enabled = true
 # Matches apps/web/.dev.vars.example APP_ORIGIN for local development.
 #
-# TRAP: `supabase config push` pushes this entire [auth] section, including
-# these two localhost-only values, to the LINKED HOSTED PROJECT -- silently
-# overwriting the production Site URL / Redirect URLs set by hand in the
-# dashboard (found 2026-09-08, when pushing unrelated SMTP settings broke
-# production sign-in by redirecting it to localhost:8787). There is no
-# per-section push. After running `config push` for any reason, always
-# re-check and, if needed, re-set Site URL and Redirect URLs in the
-# dashboard (Authentication -> URL Configuration) to the production values
-# in docs/deployment.md before assuming the push was side-effect-free.
+# TRAP (hit twice: 2026-09-08 x2): `supabase config push` pushes this entire
+# [auth] section, including these two localhost-only values, to the LINKED
+# HOSTED PROJECT -- silently overwriting the production Site URL / Redirect
+# URLs set by hand in the dashboard. There is no per-section push, so this
+# happens on every single `config push`, no exceptions, for as long as this
+# one file serves both local dev and the hosted project. A "re-check
+# afterward" reminder was tried once already and the regression still
+# recurred, so the rule now is stronger:
+#
+#   DO NOT run `supabase config push` again for this project. Full stop.
+#
+# Everything below that config push was used for -- custom SMTP
+# (auth.email.smtp) and the branded magic-link template
+# (auth.email.template.magic_link) -- has an exact equivalent in the
+# Supabase Dashboard (Project Settings -> Authentication -> SMTP Settings,
+# and Authentication -> Email Templates) that edits only that one field, so
+# it can never touch Site URL / Redirect URLs. Make any future change to
+# SMTP or the email template there instead, then mirror the change back
+# into this file so it stays documentation-accurate for local dev and for
+# anyone reading this repo -- but do not push it.
 site_url = "http://localhost:8787"
 additional_redirect_urls = ["http://localhost:8787"]
 jwt_expiry = 3600
@@ -129,8 +140,11 @@ otp_expiry = 3600
 
 # Custom SMTP (Brevo). Colleagues signing up with their own email cannot
 # receive magic links at all through Supabase's default/shared mailer --
-# see docs/deployment.md. The password is never committed; `supabase config
-# push` reads it from the local shell environment at push time only.
+# see docs/deployment.md. This is a documentation-accurate mirror of what
+# is actually configured on the hosted project via the Dashboard (Project
+# Settings -> Authentication -> SMTP Settings) -- see the TRAP comment
+# above [auth]: do not `config push` this. The password is never
+# committed regardless.
 [auth.email.smtp]
 enabled = true
 host = "smtp-relay.brevo.com"
@@ -141,6 +155,9 @@ admin_email = "env(BREVO_SENDER_EMAIL)"
 sender_name = "UpgradR"
 
 [auth.email.template.magic_link]
+# Mirror of the Dashboard's Authentication -> Email Templates -> Magic Link
+# editor -- see the TRAP comment above [auth]: do not `config push` this
+# either. Update the Dashboard first, then paste the same change here.
 subject = "Your UpgradR sign-in link"
 content_path = "./supabase/templates/magic_link.html"
 
