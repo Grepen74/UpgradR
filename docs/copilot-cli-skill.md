@@ -78,8 +78,9 @@ now; you'll come back to it in Step 4.
 
 ## Step 3 — Add the skill
 
-1. Unzip the `upgradr-mcp-skill.zip` file you were given. You should end up
-   with two files: `SKILL.md` and `mcp.mjs`.
+1. Unzip the `upgradr-mcp-skill.zip` file you downloaded (or were given) in
+   the previous section. You should end up with two files: `SKILL.md` and
+   `mcp.mjs`.
 2. Create a folder for it and move both files into it:
 
    **macOS or Linux**, in the terminal:
