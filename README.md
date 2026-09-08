@@ -35,6 +35,7 @@ Each application contains an `.env.example` or `.dev.vars.example` describing it
 - [Deployment](docs/deployment.md)
 - [Operations](docs/operations.md)
 - [MCP interface](docs/mcp.md)
+- [Demo/showcase data](docs/demo-data.md)
 - [Using UpgradR from GitHub Copilot CLI (no tech background required)](docs/copilot-cli-skill.md)
 - [Privacy and data handling](docs/privacy-and-data.md)
 - [Threat model](docs/threat-model.md)

@@ -17,7 +17,9 @@
     "mcp:login": "node scripts/mcp-agent-login.mjs",
     "mcp:tools-doc": "node scripts/generate-mcp-tools-doc.mjs",
     "check:deployment": "node scripts/check-deployment.mjs",
-    "check:mcp-local": "node scripts/mcp-local-e2e.mjs"
+    "check:mcp-local": "node scripts/mcp-local-e2e.mjs",
+    "demo:reset": "node scripts/demo-reset.mjs",
+    "demo:login": "node scripts/demo-login.mjs"
   },
   "engines": {
     "node": ">=22"
