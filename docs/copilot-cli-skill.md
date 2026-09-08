@@ -28,7 +28,12 @@ ever see your own data.
    (email, Slack, AirDrop, USB stick — it's only two small text files).
 4. About **10 minutes**, mostly waiting for one install to finish.
 
-## Step 1 — Install Node.js (skip if you already use Copilot CLI)
+> **Already have GitHub Copilot CLI installed and working on this
+> computer?** Then you already have Node.js too (Copilot CLI needs it to
+> run) — skip Steps 1 and 2 entirely and jump straight to
+> [Step 3 — Add the skill](#step-3--add-the-skill).
+
+## Step 1 — Install Node.js
 
 Node.js is a program that lets your computer run the skill's script.
 
@@ -73,8 +78,9 @@ now; you'll come back to it in Step 4.
 
 ## Step 3 — Add the skill
 
-1. Unzip the `upgradr-mcp-skill.zip` file you were given. You should end up
-   with two files: `SKILL.md` and `mcp.mjs`.
+1. Unzip the `upgradr-mcp-skill.zip` file you downloaded (or were given) in
+   the previous section. You should end up with two files: `SKILL.md` and
+   `mcp.mjs`.
 2. Create a folder for it and move both files into it:
 
    **macOS or Linux**, in the terminal:
