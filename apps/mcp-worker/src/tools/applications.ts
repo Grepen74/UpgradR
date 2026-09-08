@@ -130,7 +130,8 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
         "An item may also come back as suppressed, meaning the user has asked never to see it again -- a muted company or role, or a posting they closed. That is a decision only the user can reverse, so do not retry it and do not work around it with a different URL. " +
         "Duplicate results include the existing opportunity's id and current status, so a closed match means the user already rejected or dismissed that job — do not propose it again. " +
         "Set allowSimilar on an item only to override a possible_duplicate you have confirmed is a genuinely different opening. " +
-        "Use list_known_opportunity_keys once per run to filter candidates before calling this tool.",
+        "Use list_known_opportunity_keys once per run to filter candidates before calling this tool. " +
+        "The user's Inbox (proposed, unreviewed opportunities) is capped at 50: once it is full, further would-be-new items come back as inbox_full instead of being created. This is not an error to retry -- ask the user to triage their Inbox (shortlist or close some proposals) to free up room, or use triage_proposals, before proposing more.",
       inputSchema: createJobProposalsSchema,
     },
     async ({ proposals }, { supabase, auth }) => {
