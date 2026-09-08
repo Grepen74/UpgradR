@@ -26,6 +26,79 @@ describe("App", () => {
     expect(screen.getByLabelText(/email address/i)).toBeVisible();
   });
 
+  it("re-checks the session when the tab becomes visible again", async () => {
+    // Reproduces a tab left open signed out while the user signs in from a
+    // different tab: no network request happens on its own until something
+    // re-triggers the check, so this tab must catch up when the user
+    // switches back to it rather than requiring a manual reload.
+    let signedIn = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    signedIn = true;
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+  });
+
+  it("re-checks the session when the page is restored from the back/forward cache", async () => {
+    // Reproduces the browser restoring a previously-loaded tab from bfcache
+    // (e.g. via the back button) without re-running any JavaScript, which
+    // pageshow's `persisted` flag is the standard signal for.
+    let signedIn = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    signedIn = true;
+    const pageShowEvent = new Event("pageshow");
+    Object.defineProperty(pageShowEvent, "persisted", { value: true });
+    fireEvent(window, pageShowEvent);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+  });
+
   it("lets a signed-in user open the profile menu and switch to the profile tab", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;

@@ -104,20 +104,60 @@ export function App() {
     setApplications(applicationResult.applications);
   }, []);
 
-  useEffect(() => {
-    void api
-      .getSession()
-      .then(async ({ user: sessionUser }) => {
+  const checkSession = useCallback(
+    async (options?: { background?: boolean }) => {
+      try {
+        const { user: sessionUser } = await api.getSession();
         setUser(sessionUser);
         if (sessionUser) {
           await refreshWorkspace();
         }
-      })
-      .catch(() => {
+      } catch {
+        if (options?.background) {
+          // A background re-check (see the effect below) failing -- a
+          // transient network blip while a tab regains focus, say -- must
+          // not force an already-signed-in user back to the sign-in
+          // screen. Leave the current state alone; the next check, or a
+          // real reload, will resolve it.
+          return;
+        }
         setMessage("UpgradR could not load your session.");
         setUser(null);
-      });
-  }, [refreshWorkspace]);
+      }
+    },
+    [refreshWorkspace],
+  );
+
+  useEffect(() => {
+    void checkSession();
+  }, [checkSession]);
+
+  // The initial check above only ever runs once, on mount. A tab left open
+  // signed out while the user signs in from another tab, or a tab the
+  // browser restores from its back/forward cache with whatever auth state
+  // it had when it was last unloaded, neither trigger a fresh network
+  // request on their own -- so the tab can keep showing stale auth state
+  // (signed in or signed out) until it happens to be reloaded. Re-check
+  // whenever the tab becomes visible again or is restored from bfcache, so
+  // switching back to an already-open tab is enough to reconcile it.
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void checkSession({ background: true });
+      }
+    }
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) {
+        void checkSession({ background: true });
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [checkSession]);
 
   async function requestMagicLink(event: FormEvent) {
     event.preventDefault();
