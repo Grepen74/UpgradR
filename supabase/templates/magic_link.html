@@ -1,0 +1,40 @@
+<!--
+  UpgradR magic-link sign-in email. Referenced by
+  supabase/config.toml's [auth.email.template.magic_link] and pushed to the
+  hosted project with `supabase config push`. {{ .ConfirmationURL }} is the
+  templating variable Supabase substitutes at send time (see
+  docs/deployment.md).
+-->
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
+  <!--
+    Matches apps/web/src/styles.css .brand/.brand-mark exactly (#5b45d6,
+    11-13px radius, white bold "U"). Rendered with inline-styled HTML, not
+    an image: email clients commonly block remote/embedded images until
+    the user clicks "show images", which would hide a real logo on first
+    open. A table is used (not a div) for Outlook desktop compatibility;
+    border-radius still degrades to a square there, which is an acceptable
+    fallback.
+  -->
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 28px;">
+    <tr>
+      <td style="width: 36px; height: 36px; min-width: 36px; border-radius: 12px; background-color: #5b45d6; text-align: center; vertical-align: middle;">
+        <span style="color: #ffffff; font-size: 18px; font-weight: 800; line-height: 36px;">U</span>
+      </td>
+      <td style="padding-left: 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: #171a22; white-space: nowrap;">UpgradR</td>
+    </tr>
+  </table>
+  <p style="font-size: 15px; line-height: 1.5;">
+    Click the button below to sign in to your UpgradR job-application
+    tracker. This link expires shortly and can only be used once.
+  </p>
+  <p style="margin: 32px 0;">
+    <a href="{{ .ConfirmationURL }}"
+       style="background: #1a1a1a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 15px; display: inline-block;">
+      Sign in to UpgradR
+    </a>
+  </p>
+  <p style="font-size: 13px; color: #666; line-height: 1.5;">
+    If you didn't request this, you can safely ignore this email — no
+    account changes will be made.
+  </p>
+</div>

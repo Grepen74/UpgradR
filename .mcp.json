@@ -8,7 +8,7 @@
     },
     "upgradr-prod": {
       "type": "http",
-      "url": "https://upgradr-mcp-worker.john-ahlinder.workers.dev/mcp",
+      "url": "https://upgradr-mcp-worker.upgradr.workers.dev/mcp",
       "tools": ["*"],
       "timeout": 60000
     }

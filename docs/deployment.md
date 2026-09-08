@@ -34,6 +34,38 @@ Dynamic client registration matters for the same practical reason: without it
 no agent can register itself, and every client needs a `client_id` created by
 hand before it can connect at all.
 
+### Email delivery: Supabase's default mailer is not usable for this product
+
+Supabase provisions every project with a shared default SMTP service, and it
+has two restrictions that only surface once real usage starts (found
+2026-09-08, when a colleague-sharing test tripped both at once):
+
+- **2 emails/hour, hard-capped**, regardless of `auth.rate_limit.email_sent`
+  in `config.toml` -- Supabase's own documented ceiling for the default
+  mailer, unrelated to any project setting.
+- **Delivery is refused to anyone who is not a member of the project's
+  Supabase organization team.** A colleague signing up with their own email
+  gets `Email address not authorized` and never receives a magic link at
+  all -- this is a hard blocker for the "share with colleagues" goal on its
+  own, independent of the rate limit.
+
+Both are lifted entirely by configuring a custom SMTP provider under
+`[auth.email.smtp]` in `config.toml` (pushed with `supabase config push`) or
+the equivalent dashboard page (Authentication → Emails → SMTP Settings).
+**Brevo** is the recommended provider for this project: 300 emails/day free,
+and does not require owning a domain (a single verified sender address is
+enough, via Brevo's own confirmation-email flow) -- unlike Resend, whose free
+tier requires a verified domain before it will deliver to anyone other than
+the account owner. Store the SMTP password as a local environment variable
+and reference it from `config.toml` as `pass = "env(VAR_NAME)"` so it is
+never committed; `supabase config push` reads it from the shell at push
+time only.
+
+The email template sent (subject and body) is configured independently, via
+`[auth.email.template.magic_link]` pointing at `supabase/templates/
+magic_link.html` -- Supabase's stock template does not mention the
+product name at all, only "Supabase", until a project overrides it.
+
 Required values:
 
 - Project URL

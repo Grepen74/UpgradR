@@ -7,7 +7,7 @@ and pasting a few lines of text.
 
 If you can already connect Copilot CLI (or another AI assistant) directly to
 an "MCP server," you don't need this page — just point it at
-`https://upgradr-mcp-worker.john-ahlinder.workers.dev/mcp` and skip ahead to
+`https://upgradr-mcp-worker.upgradr.workers.dev/mcp` and skip ahead to
 signing in. This page exists specifically for **GitHub Copilot CLI users
 whose organization has turned off that direct-connection feature** (some
 companies do, as a security setting). The skill works around that by using a
@@ -18,7 +18,7 @@ ever see your own data.
 
 1. **A computer** running macOS, Windows, or Linux.
 2. **An UpgradR account.** If you don't have one yet, go to
-   <https://upgradr-web.john-ahlinder.workers.dev>, enter your email, and
+   <https://upgradr-web.upgradr.workers.dev>, enter your email, and
    click the sign-in link it emails you (no password to remember).
 3. **The skill files.** Download
    <https://github.com/Grepen74/UpgradR/releases/latest/download/upgradr-mcp-skill.zip>

@@ -29,8 +29,8 @@
     "production": {
       "name": "upgradr-mcp-worker",
       "vars": {
-        "MCP_RESOURCE_URL": "https://upgradr-mcp-worker.john-ahlinder.workers.dev",
-        "MCP_ALLOWED_HOSTNAMES": "upgradr-mcp-worker.john-ahlinder.workers.dev",
+        "MCP_RESOURCE_URL": "https://upgradr-mcp-worker.upgradr.workers.dev",
+        "MCP_ALLOWED_HOSTNAMES": "upgradr-mcp-worker.upgradr.workers.dev",
         "MCP_REQUIRED_SCOPE": "mcp",
         "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
         "SUPABASE_ANON_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC",

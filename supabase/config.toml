@@ -74,6 +74,16 @@ enabled = false
 [auth]
 enabled = true
 # Matches apps/web/.dev.vars.example APP_ORIGIN for local development.
+#
+# TRAP: `supabase config push` pushes this entire [auth] section, including
+# these two localhost-only values, to the LINKED HOSTED PROJECT -- silently
+# overwriting the production Site URL / Redirect URLs set by hand in the
+# dashboard (found 2026-09-08, when pushing unrelated SMTP settings broke
+# production sign-in by redirecting it to localhost:8787). There is no
+# per-section push. After running `config push` for any reason, always
+# re-check and, if needed, re-set Site URL and Redirect URLs in the
+# dashboard (Authentication -> URL Configuration) to the production values
+# in docs/deployment.md before assuming the push was side-effect-free.
 site_url = "http://localhost:8787"
 additional_redirect_urls = ["http://localhost:8787"]
 jwt_expiry = 3600
@@ -94,7 +104,12 @@ enabled = true
 uri = "pg-functions://postgres/app/mcp_access_token_hook"
 
 [auth.rate_limit]
-email_sent = 2
+# Supabase's default/shared mailer hard-caps this at 2/hour regardless of
+# this value, and additionally refuses to deliver to anyone outside the
+# project's own Supabase org team -- see docs/deployment.md, "Email
+# delivery: Supabase's default mailer is not usable for this product".
+# This higher value only takes effect once auth.email.smtp below is enabled.
+email_sent = 30
 sms_sent = 30
 anonymous_users = 30
 token_refresh = 150
@@ -111,6 +126,23 @@ secure_password_change = false
 max_frequency = "1s"
 otp_length = 6
 otp_expiry = 3600
+
+# Custom SMTP (Brevo). Colleagues signing up with their own email cannot
+# receive magic links at all through Supabase's default/shared mailer --
+# see docs/deployment.md. The password is never committed; `supabase config
+# push` reads it from the local shell environment at push time only.
+[auth.email.smtp]
+enabled = true
+host = "smtp-relay.brevo.com"
+port = 587
+user = "env(BREVO_SMTP_LOGIN)"
+pass = "env(BREVO_SMTP_KEY)"
+admin_email = "env(BREVO_SENDER_EMAIL)"
+sender_name = "UpgradR"
+
+[auth.email.template.magic_link]
+subject = "Your UpgradR sign-in link"
+content_path = "./supabase/templates/magic_link.html"
 
 [auth.sms]
 enable_signup = false

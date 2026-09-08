@@ -33,7 +33,7 @@
     "production": {
       "name": "upgradr-web",
       "vars": {
-        "APP_ORIGIN": "https://upgradr-web.john-ahlinder.workers.dev",
+        "APP_ORIGIN": "https://upgradr-web.upgradr.workers.dev",
         "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
         "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC"
       }

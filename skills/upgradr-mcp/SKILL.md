@@ -7,7 +7,7 @@ license: Free to share and reuse with colleagues who have (or create) their own 
 # UpgradR job-application tracker
 
 This skill talks to a shared, multi-tenant UpgradR MCP server
-(`https://upgradr-mcp-worker.john-ahlinder.workers.dev/mcp`) using a small,
+(`https://upgradr-mcp-worker.upgradr.workers.dev/mcp`) using a small,
 self-contained Node script in this skill's directory (`mcp.mjs`), instead of
 Copilot CLI's built-in MCP-server connector. It performs the identical OAuth
 2.1 + PKCE flow a native MCP client would use, then calls the server's
@@ -36,7 +36,7 @@ user's explicit say-so each time.
    another skills location Copilot CLI supports), then run `/skills reload`
    in their own Copilot CLI session.
 3. If they don't already have an UpgradR account, they sign up themselves at
-   `https://upgradr-web.john-ahlinder.workers.dev` (magic-link email — no
+   `https://upgradr-web.upgradr.workers.dev` (magic-link email — no
    password to share).
 4. They run `node ~/.copilot/skills/upgradr-mcp/mcp.mjs login` themselves and
    approve access as themselves on the consent screen. This creates their

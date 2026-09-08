@@ -34,7 +34,7 @@ import { exec } from "node:child_process";
 
 const SUPABASE_URL = "https://yshjthrciysbvzddvfgf.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC";
-const MCP_URL = "https://upgradr-mcp-worker.john-ahlinder.workers.dev/mcp";
+const MCP_URL = "https://upgradr-mcp-worker.upgradr.workers.dev/mcp";
 const REDIRECT_URI = "http://127.0.0.1:8991/callback";
 const CLIENT_NAME = "UpgradR Copilot CLI skill";
 // A single, shared, non-secret OAuth client identity for this skill (public
