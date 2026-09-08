@@ -1,0 +1,80 @@
+name: Deploy
+
+# Manual, on-demand deployment to Cloudflare Workers production. Nothing here
+# runs automatically on push -- you trigger it from the Actions tab (or
+# `gh workflow run deploy.yml`) whenever you actually want to ship.
+#
+# Requires these repository secrets (Settings -> Secrets and variables ->
+# Actions) before this workflow can succeed:
+#   CLOUDFLARE_API_TOKEN   - a Workers-scoped API token (Edit Cloudflare
+#                            Workers template is enough; create at
+#                            https://dash.cloudflare.com/profile/api-tokens)
+#   CLOUDFLARE_ACCOUNT_ID  - only needed if the token has access to more than
+#                            one Cloudflare account; omit otherwise
+#
+# This deploys application code only. It does not run Supabase migrations
+# against production -- that stays a separate, deliberate step
+# (`supabase db push` / `supabase migration up --linked`).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which app(s) to deploy"
+        required: true
+        type: choice
+        options:
+          - both
+          - web
+          - mcp-worker
+        default: both
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-web:
+    if: ${{ inputs.target == 'web' || inputs.target == 'both' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:client --workspace @upgradr/web
+
+      - name: Deploy web Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: deploy --env production
+
+  deploy-mcp-worker:
+    if: ${{ inputs.target == 'mcp-worker' || inputs.target == 'both' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Deploy MCP Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/mcp-worker
+          command: deploy --env production
