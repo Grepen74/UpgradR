@@ -2,6 +2,8 @@
 
 UpgradR is a web-first job application workspace with a secure MCP interface for agent-assisted job discovery and workflow management.
 
+![UpgradR pipeline overview, showing job applications organized into Inbox, Shortlist, Applied, Interviewing, and Offer columns](docs/images/pipeline-overview.png)
+
 ## Workspace
 
 - `apps/web` - responsive web application
