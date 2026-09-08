@@ -5,8 +5,8 @@
 ```
 ┌─────────────────────────┐
 │   Browser (React SPA)   │
-│    UpgradR web client    │
-└────────────┬─────────────┘
+│    UpgradR web client   │
+└────────────┬────────────┘
              │ HTTPS, HTTP-only session cookie
              ▼
 ┌───────────────────────────────────────────────────────────┐
@@ -15,35 +15,35 @@
 │  │ Static assets  │   │ Hono API routes (/api/*)     │    │
 │  │ (React build)  │   │ auth · applications · profile│    │
 │  │                │   │ companies · contacts · notes │    │
-│  │                │   │ tasks · documents · account   │    │
-│  └────────────────┘   └───────────────┬───────────────┘    │
-└──────────────────────────────────────────┼─────────────────┘
-                                            │ the user's own access token
-                                            ▼
+│  │                │   │ tasks · documents · account  │    │
+│  └────────────────┘   └───────────────┬──────────────┘    │
+└───────────────────────────────────────┼--─────────────────┘
+                                        │ the user's own access token
+                                        ▼
 ┌────────────────────────────────────────────────────────────┐
-│                          Supabase                           │
-│  ┌───────────────────────┐   ┌────────────────────────┐    │
-│  │ Postgres               │   │ Auth (GoTrue)          │    │
-│  │ · RLS on every table   │   │ · magic link sessions  │    │
-│  │ · pgTAP tests          │   │ · OAuth 2.1 auth server │    │
-│  │ · SECURITY DEFINER fns │   │ · custom token hook     │    │
-│  └───────────────────────┘   └────────────────────────┘    │
-│  ┌───────────────────────┐                                  │
-│  │ Storage                │  private buckets, signed URLs   │
-│  └───────────────────────┘                                  │
-└──────────────────────────┬───────────────────────────────────┘
+│                          Supabase                          │
+│  ┌───────────────────────┐   ┌────────────────────────-┐   │
+│  │ Postgres              │   │ Auth (GoTrue)           │   │
+│  │ · RLS on every table  │   │ · magic link sessions   │   │
+│  │ · pgTAP tests         │   │ · OAuth 2.1 auth server │   │
+│  │ · SECURITY DEFINER fns│   │ · custom token hook     │   │
+│  └───────────────────────┘   └────────────────────────-┘   │
+│  ┌───────────────────────┐                                 │
+│  │ Storage               │  private buckets, signed URLs   │
+│  └───────────────────────┘                                 │
+└─────────────────────────-─┬────────────────────────────────┘
                             │ OAuth-scoped user access token
                             │ (never a service-role key)
                             ▼
-┌────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────┐
 │         apps/mcp-worker — separate Cloudflare Worker        │
-│  Streamable HTTP + OAuth 2.1 (RFC 9728 / RFC 8414 discovery) │
-│  16 scoped tools · 3 prompts                                 │
-└──────────────────────────┬───────────────────────────────────┘
+│  Streamable HTTP + OAuth 2.1 (RFC 9728 / RFC 8414 discovery)│
+│  16 scoped tools · 3 prompts                                │
+└─────────────────────────-─┬─────────────────────────────────┘
                             │ Streamable HTTP
                             ▼
 ┌────────────────────────────────────────────────────────────┐
-│           Any MCP-capable agent (Claude, Copilot CLI, …)     │
+│           Any MCP-capable agent (Claude, Copilot CLI, …)   │
 └────────────────────────────────────────────────────────────┘
 ```
 
