@@ -4,6 +4,11 @@ name: Deploy
 # runs automatically on push -- you trigger it from the Actions tab (or
 # `gh workflow run deploy.yml`) whenever you actually want to ship.
 #
+# Trunk is `main`: branch off main, PR back into main, then dispatch this
+# workflow against main (the Actions "Run workflow" branch picker defaults to
+# the repo's default branch, which is main). `develop` is a legacy branch kept
+# around temporarily and is no longer the PR/deploy target.
+#
 # Requires these repository secrets (Settings -> Secrets and variables ->
 # Actions) before this workflow can succeed:
 #   CLOUDFLARE_API_TOKEN   - a Workers-scoped API token (Edit Cloudflare
