@@ -93,6 +93,10 @@ export async function deleteExistingDemoUser(serviceClient, email) {
   return true;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Mints a real session for `email` without sending any mail: generateLink()
  * both creates the user (if `email` doesn't exist yet) and returns a
@@ -101,36 +105,64 @@ export async function deleteExistingDemoUser(serviceClient, email) {
  * every subsequent `.from(...)` call on it is authenticated as this user and
  * subject to their RLS policies -- exactly as if they were signed in through
  * the browser.
+ *
+ * Retries on a transient "Email link is invalid or has expired" from
+ * verifyOtp() by minting a brand-new token and trying again -- observed
+ * intermittently right after deleteExistingDemoUser() recreates the same
+ * email, most likely a short propagation gap between the delete and the
+ * following generateLink() landing on the still-settling row. Each retry
+ * generates a fresh token rather than reusing the rejected one, since a
+ * rejected token is very likely already consumed/invalidated.
  */
-export async function mintDemoSession({ serviceClient, anonClient, email, redirectTo }) {
-  const { data, error } = await serviceClient.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo },
-  });
-  if (error || !data?.properties?.hashed_token) {
-    throw new Error(`Could not generate a sign-in link for ${email}: ${error?.message ?? "no token returned"}`);
+export async function mintDemoSession({
+  serviceClient,
+  anonClient,
+  email,
+  redirectTo,
+  retries = 4,
+  retryDelayMs = 1500,
+}) {
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const { data, error } = await serviceClient.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo },
+    });
+    if (error || !data?.properties?.hashed_token) {
+      throw new Error(`Could not generate a sign-in link for ${email}: ${error?.message ?? "no token returned"}`);
+    }
+
+    const { data: verified, error: verifyError } = await anonClient.auth.verifyOtp({
+      token_hash: data.properties.hashed_token,
+      type: "magiclink",
+    });
+    if (!verifyError && verified?.session) {
+      return {
+        session: verified.session,
+        userId: verified.session.user.id,
+        actionLink: data.properties.action_link,
+      };
+    }
+
+    lastError = verifyError;
+    if (attempt < retries) {
+      console.log(
+        `  (sign-in verification attempt ${attempt}/${retries} failed -- ${verifyError?.message ?? "no session"}, retrying...)`,
+      );
+      await sleep(retryDelayMs);
+    }
   }
 
-  const { data: verified, error: verifyError } = await anonClient.auth.verifyOtp({
-    token_hash: data.properties.hashed_token,
-    type: "magiclink",
-  });
-  if (verifyError || !verified?.session) {
-    throw new Error(`Could not verify the sign-in token for ${email}: ${verifyError?.message ?? "no session"}`);
-  }
-
-  return {
-    session: verified.session,
-    userId: verified.session.user.id,
-    actionLink: data.properties.action_link,
-  };
+  throw new Error(`Could not verify the sign-in token for ${email}: ${lastError?.message ?? "no session"}`);
 }
 
 /**
  * Registers a throwaway OAuth client and drives the same authorize/consent/
- * exchange flow a real Copilot CLI/skill login performs, returning an MCP
- * access token scoped for seeding. Reuses registerClient/authorizeAndExchange
+ * exchange flow a real Copilot CLI/skill login performs, returning the full
+ * token set (not just the access token) plus the client id used to obtain
+ * it -- callers that need to cache and later refresh this token (see
+ * scripts/demo-mcp.mjs) need both. Reuses registerClient/authorizeAndExchange
  * from mcp-agent-auth.mjs unchanged -- neither assumes a local stack.
  */
 export async function mintDemoMcpToken({
@@ -158,5 +190,9 @@ export async function mintDemoMcpToken({
     resource: mcpUrl,
     scopes,
   });
-  return tokens.access_token;
+  return {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    clientId: registration.client_id,
+  };
 }

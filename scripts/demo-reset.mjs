@@ -506,6 +506,11 @@ Requires SUPABASE_SERVICE_ROLE_KEY in this terminal.
   console.log(`\nResetting ${args.email}...`);
   const deleted = await deleteExistingDemoUser(serviceClient, args.email);
   console.log(deleted ? "Deleted the existing demo account." : "No existing demo account found -- creating fresh.");
+  // A short settle delay after a fresh delete: generateLink() immediately
+  // afterward has intermittently landed on a not-yet-fully-committed row,
+  // surfacing as "Email link is invalid or has expired" from verifyOtp()
+  // even though mintDemoSession() itself already retries that step.
+  if (deleted) await new Promise((resolve) => setTimeout(resolve, 1000));
 
   const { session, userId } = await mintDemoSession({
     serviceClient,
@@ -517,13 +522,18 @@ Requires SUPABASE_SERVICE_ROLE_KEY in this terminal.
 
   // --- Candidate profile, education, skills, preferences (direct writes:
   // none of this is MCP-writable by design) ---------------------------------
+  // Note: app.handle_new_user() (a trigger on auth.users insert) already
+  // auto-created empty candidate_profiles/job_search_preferences stub rows
+  // for this owner_id the moment the account was created above -- so these
+  // are updates against that existing row, not inserts.
   console.log("Seeding candidate profile and preferences...");
   const { data: profileRow, error: profileError } = await anonClient
     .from("candidate_profiles")
-    .insert({ owner_id: userId, ...CANDIDATE_PROFILE })
+    .update({ ...CANDIDATE_PROFILE })
+    .eq("owner_id", userId)
     .select("id")
     .single();
-  if (profileError) throw new Error(`candidate_profiles insert failed: ${profileError.message}`);
+  if (profileError) throw new Error(`candidate_profiles update failed: ${profileError.message}`);
 
   const { error: experiencesError } = await anonClient.from("profile_experiences").insert(
     EXPERIENCES.map((experience) => ({ owner_id: userId, candidate_profile_id: profileRow.id, ...experience })),
@@ -542,8 +552,9 @@ Requires SUPABASE_SERVICE_ROLE_KEY in this terminal.
 
   const { error: preferencesError } = await anonClient
     .from("job_search_preferences")
-    .insert({ owner_id: userId, ...PREFERENCES });
-  if (preferencesError) throw new Error(`job_search_preferences insert failed: ${preferencesError.message}`);
+    .update({ ...PREFERENCES })
+    .eq("owner_id", userId);
+  if (preferencesError) throw new Error(`job_search_preferences update failed: ${preferencesError.message}`);
 
   // --- Companies and contacts (direct writes: no MCP tool for either) ------
   console.log("Seeding companies and contacts...");
@@ -582,7 +593,7 @@ Requires SUPABASE_SERVICE_ROLE_KEY in this terminal.
 
   // --- MCP: applications, status journeys, tasks, notes --------------------
   console.log("Signing in to the MCP server...");
-  const accessToken = await mintDemoMcpToken({
+  const { accessToken } = await mintDemoMcpToken({
     anonClient,
     session,
     supabaseUrl: PROD_SUPABASE_URL,

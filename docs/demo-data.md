@@ -83,6 +83,32 @@ Print the link instead of auto-opening it:
 npm run demo:login -- --no-open
 ```
 
+## Driving live MCP calls against the demo account
+
+`scripts/demo-mcp.mjs` (`npm run demo:mcp -- <command>`) is a small CLI for
+calling the real, deployed MCP server against the demo account repeatedly,
+without re-running the full token-minting dance every time -- useful for an
+agent (or you) driving several tool calls in a row.
+
+```sh
+export SUPABASE_SERVICE_ROLE_KEY="..."
+node scripts/demo-mcp.mjs login      # headless -- no browser, no consent click
+node scripts/demo-mcp.mjs status
+node scripts/demo-mcp.mjs list
+node scripts/demo-mcp.mjs prompts
+node scripts/demo-mcp.mjs prompt weekly_job_search '{"maxProposals":10}'
+node scripts/demo-mcp.mjs call get_candidate_profile '{}'
+node scripts/demo-mcp.mjs logout
+```
+
+`login` only needs `SUPABASE_SERVICE_ROLE_KEY`; every other command reuses
+and auto-refreshes a cached token from `scripts/.state/demo-tokens.json`
+(gitignored, `0600`/`0700` permissions). **Re-run `login` after every
+`demo:reset`** -- reset deletes and recreates the `auth.users` row with a
+new user id, which silently invalidates any previously cached token (it
+still authenticates, but now points at a user that no longer exists, so
+every call returns empty results instead of erroring).
+
 ## What gets seeded
 
 - A candidate profile (headline, summary, 2 work experiences, 1 education
@@ -106,10 +132,18 @@ across applications). Every run is fully idempotent: it always starts from
 a clean slate, so running it repeatedly (before every screenshot session,
 for example) always produces the exact same dataset.
 
+`demo:reset` retries the initial sign-in step (delete-then-recreate can
+intermittently race with the following sign-in verification) and writes
+the candidate profile/preferences as updates against the empty stub rows
+`app.handle_new_user()` already creates for every new account, rather than
+inserts -- both were real bugs hit and fixed while first validating this
+end to end.
+
 ## Source
 
 `scripts/lib/demo-account.mjs` (shared helpers), `scripts/demo-reset.mjs`
-(seed orchestrator), `scripts/demo-login.mjs` (sign-in link minter). Public
+(seed orchestrator), `scripts/demo-login.mjs` (sign-in link minter),
+`scripts/demo-mcp.mjs` (cached-token CLI for live MCP calls). Public
 Supabase/Cloudflare configuration values are hardcoded constants in
 `scripts/lib/demo-account.mjs`, mirroring the same precedent already used in
 `skills/upgradr-mcp/mcp.mjs` -- update them there if the project or hostnames
