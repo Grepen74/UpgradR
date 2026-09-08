@@ -2,6 +2,33 @@
 
 UpgradR stores job-search information, career history, contact details, notes, and private documents. Treat all of it as sensitive personal data.
 
+## Who can actually read this data
+
+Row Level Security (RLS) is the reason one user can never see another user's
+rows through the app, the MCP server, or the public Supabase API directly.
+Every query from those surfaces runs as the Postgres `authenticated` role,
+and every policy gates on `auth.uid() = owner_id`. That is a real,
+tested guarantee: **user-to-user isolation, including against a
+malicious or compromised MCP client**, holds.
+
+It is **not** a guarantee against the operator (currently, the person
+running this deployment). Postgres RLS has a built-in exemption for
+superusers and table owners -- this is fundamental to how RLS works, not a
+choice this project made -- and concretely, in this deployment:
+
+- The Supabase Dashboard's Table Editor and SQL Editor connect as an
+  elevated role that bypasses RLS entirely.
+- The `service_role` key (already used by the web Worker for account
+  deletion) is explicitly granted full access to every table, by design.
+- Direct database access (`psql`, `supabase db`) would behave the same way.
+
+No table uses `FORCE ROW LEVEL SECURITY`, though that flag would not stop a
+superuser or the table owner regardless. Nothing here is encrypted at rest
+with a key the operator does not also hold, so the operator can, in
+practice, read any row in the database. If this deployment is ever run for
+anyone other than its own operator, this distinction should be stated to
+users plainly rather than left implied by the RLS guarantee alone.
+
 ## Profile imports
 
 - LinkedIn linking is optional and provides basic identity only.
