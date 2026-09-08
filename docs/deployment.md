@@ -61,6 +61,18 @@ sender address is enough, via Brevo's own confirmation-email flow) --
 unlike Resend, whose free tier requires a verified domain before it will
 deliver to anyone other than the account owner.
 
+**Known tradeoff, accepted for now**: the verified sender is a personal
+address on a domain not owned by this project (no domain is owned), which
+trips Google/Yahoo/Microsoft's DKIM/DMARC bulk-sender compliance warning in
+Brevo. This is structural, not a one-time glitch -- you cannot add DNS
+records (SPF/DKIM/DMARC) for a domain like `gmail.com` that you don't
+control, so any personal-email sender routed through a third-party ESP
+will always trip this. Decided to proceed accepting the occasional
+spam-folder risk rather than buy a domain solely to fix it. Revisit if
+deliverability turns out to be poor in practice -- buying a domain
+(~$10-15/yr) would resolve this permanently and would also let the
+`workers.dev` URLs move to something less generic as a bonus.
+
 The email template sent (subject and body) is likewise configured directly
 via the Dashboard (Authentication → Email Templates → Magic Link), mirrored
 into `[auth.email.template.magic_link]` pointing at `supabase/templates/
