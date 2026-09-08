@@ -40,8 +40,24 @@ export const DOCUMENT_MAX_FILE_NAME_LENGTH = 260; // matches documents.file_name
 // Application-layer quotas. The Storage bucket only bounds a single
 // object's size, so these are enforced by the worker (see
 // worker/documents.ts) by summing public.documents rows for the owner.
-export const DOCUMENT_MAX_TOTAL_BYTES_PER_OWNER = 200 * 1024 * 1024; // 200 MiB
+//
+// Kept well below what an individual user plausibly needs (a handful of
+// resumes/cover letters/portfolios) because the underlying Supabase project
+// is on the free tier, which caps *total* Storage at 1 GiB across every
+// user and both buckets (see DOCUMENT_MAX_TOTAL_PLATFORM_BYTES below). A
+// per-owner-only quota bounds one user but says nothing about how many
+// users there are -- at the old 200 MiB, just 5 users maxing out their own
+// quota would have exhausted the entire shared budget.
+export const DOCUMENT_MAX_TOTAL_BYTES_PER_OWNER = 25 * 1024 * 1024; // 25 MiB
 export const DOCUMENT_MAX_COUNT_PER_OWNER = 100;
+
+// Project-wide ceiling, summed across every owner's documents (see
+// public.get_total_document_storage_bytes(), which the per-owner check
+// above cannot substitute for). Kept well under Supabase free tier's raw
+// 1 GiB Storage cap to leave headroom for the separate `profile-imports`
+// bucket (supabase/migrations/20250115121100_storage.sql), which shares the
+// same project-wide budget but is not counted by this constant.
+export const DOCUMENT_MAX_TOTAL_PLATFORM_BYTES = 700 * 1024 * 1024; // 700 MiB
 
 export type DocumentValidationError =
   | "empty_file"
@@ -163,6 +179,20 @@ export function wouldExceedDocumentQuota({
     projectedCount > DOCUMENT_MAX_COUNT_PER_OWNER ||
     projectedBytes > DOCUMENT_MAX_TOTAL_BYTES_PER_OWNER
   );
+}
+
+/**
+ * Decides whether adding `additionalBytes` to the platform-wide total
+ * (summed across every owner via public.get_total_document_storage_bytes(),
+ * not just the caller) would exceed the shared Storage quota. A per-owner
+ * quota alone cannot catch this: many users each comfortably under their
+ * own limit can still, in aggregate, exhaust the project's shared budget.
+ */
+export function wouldExceedPlatformStorageQuota(
+  currentPlatformBytes: number,
+  additionalBytes: number,
+): boolean {
+  return currentPlatformBytes + additionalBytes > DOCUMENT_MAX_TOTAL_PLATFORM_BYTES;
 }
 
 /** Human-readable byte size, e.g. `formatBytes(3_242_880)` -> "3.1 MB". */

@@ -8,6 +8,7 @@ import {
   validateDocumentContent,
   validateDocumentFile,
   wouldExceedDocumentQuota,
+  wouldExceedPlatformStorageQuota,
 } from "../../shared/documents";
 import { recordActivityEvent } from "../activity";
 import { authenticated } from "../auth";
@@ -177,6 +178,30 @@ documentsRoute.post("/", async (context) => {
         )} MB total are allowed. Delete an existing document to free up space.`,
       },
       413,
+    );
+  }
+
+  // Enforce the project-wide quota too: many users each under their own
+  // per-owner quota can still, in aggregate, exhaust the Supabase project's
+  // shared free-tier Storage cap (see
+  // supabase/migrations/20250115122700_document_storage_platform_quota.sql).
+  // Checked against the gross upload size, not the net of a replacement,
+  // because a replacement briefly holds both the old and new objects (the
+  // superseded one is only removed after the new one is saved, below).
+  const { data: platformBytesRaw, error: platformUsageError } = await auth.supabase.rpc(
+    "get_total_document_storage_bytes",
+  );
+  if (platformUsageError) {
+    return context.json({ error: "Unable to verify storage quota" }, 502);
+  }
+  const platformBytes = Number(platformBytesRaw ?? 0);
+  if (wouldExceedPlatformStorageQuota(platformBytes, file.size)) {
+    return context.json(
+      {
+        error:
+          "Storage is temporarily full across all users. Please try again later, or contact support.",
+      },
+      507,
     );
   }
 

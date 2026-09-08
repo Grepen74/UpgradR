@@ -4,10 +4,12 @@ import {
   DOCUMENT_MAX_COUNT_PER_OWNER,
   DOCUMENT_MAX_FILE_SIZE_BYTES,
   DOCUMENT_MAX_TOTAL_BYTES_PER_OWNER,
+  DOCUMENT_MAX_TOTAL_PLATFORM_BYTES,
   formatBytes,
   validateDocumentContent,
   validateDocumentFile,
   wouldExceedDocumentQuota,
+  wouldExceedPlatformStorageQuota,
 } from "./documents";
 
 describe("validateDocumentFile", () => {
@@ -160,6 +162,24 @@ describe("wouldExceedDocumentQuota", () => {
         replacingBytes: 1,
       }),
     ).toBe(true);
+  });
+});
+
+describe("wouldExceedPlatformStorageQuota", () => {
+  it("allows an upload well within the shared platform quota", () => {
+    expect(wouldExceedPlatformStorageQuota(1024, 1024)).toBe(false);
+  });
+
+  it("blocks an upload that would push the platform total over the quota", () => {
+    expect(
+      wouldExceedPlatformStorageQuota(DOCUMENT_MAX_TOTAL_PLATFORM_BYTES, 1),
+    ).toBe(true);
+  });
+
+  it("allows an upload that lands exactly on the platform quota", () => {
+    expect(
+      wouldExceedPlatformStorageQuota(0, DOCUMENT_MAX_TOTAL_PLATFORM_BYTES),
+    ).toBe(false);
   });
 });
 
