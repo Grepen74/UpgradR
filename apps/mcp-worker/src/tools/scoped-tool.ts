@@ -29,8 +29,10 @@ interface ScopedToolConfig<Input, Output = unknown> {
  * A caller missing a required scope gets an ordinary tool result with
  * `isError: true` (not an HTTP-level 403) — per the SDK's guidance, this
  * lets the model read the refusal and move on instead of the whole
- * connection failing. Endpoint-wide access is separately gated by
- * `MCP_REQUIRED_SCOPE` in `requireBearerAuth` (see `index.ts`).
+ * connection failing. Endpoint-wide access is separately gated by the
+ * `MCP_REQUIRED_SCOPE` check performed right after token verification in
+ * `index.ts` (deliberately not via `requireBearerAuth`'s own
+ * `requiredScopes` option — see the comment there).
  */
 export function registerScopedTool<Input, Output = unknown>(
   server: McpServer,

@@ -35,6 +35,29 @@ describe("GET /health", () => {
   });
 });
 
+describe("POST /mcp bearer challenge", () => {
+  it("never advertises the app-defined 'mcp' scope in WWW-Authenticate", async () => {
+    // Regression test for the "could not connect" MCP OAuth incident
+    // (2026-09-09): requireBearerAuth folds its `requiredScopes` into the
+    // `WWW-Authenticate: scope="..."` challenge, and MCP clients read that
+    // as a hint for what `scope=` to request from Supabase's own
+    // /authorize -- which rejects anything but its five built-in
+    // OIDC/offline scopes. The "mcp" gate must still be enforced (see the
+    // insufficient_scope path elsewhere), just never surfaced here.
+    const res = await app.request(
+      "/mcp",
+      { method: "POST", headers: { Host: "mcp.upgradr.app", "Content-Type": "application/json" }, body: "{}" },
+      validEnv,
+    );
+
+    expect(res.status).toBe(401);
+    const challenge = res.headers.get("WWW-Authenticate");
+    expect(challenge).not.toBeNull();
+    expect(challenge).not.toContain('scope="mcp"');
+    expect(challenge).not.toContain("scope=");
+  });
+});
+
 describe("misconfiguration handling", () => {
   it("returns 503 for every route, not just /health, when configuration is invalid", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
