@@ -25,22 +25,16 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
-      # dl.google.com's apt repo occasionally serves a Packages.gz that
-      # doesn't yet match its own Release file (CDN edge propagation lag),
-      # which fails apt's hash check with "Hash Sum mismatch". This is an
-      # upstream/CDN issue, not ours -- retry a few times with a short
-      # backoff so a transient edge-node inconsistency doesn't fail the job.
-      - name: Install Playwright Chromium (with retry)
-        run: |
-          for attempt in 1 2 3 4 5; do
-            if npx playwright install --with-deps chromium; then
-              exit 0
-            fi
-            echo "Attempt $attempt failed, retrying in 30s..."
-            sleep 30
-          done
-          echo "All attempts to install Playwright Chromium failed."
-          exit 1
+      # ubuntu-latest runners ship Google Chrome's apt repo preconfigured
+      # (for the runner's own preinstalled Chrome). We only need Playwright's
+      # bundled Chromium binary and generic system libs -- never a package
+      # from that repo -- but `playwright install --with-deps` still runs a
+      # blanket `apt-get update` across every configured repo, so a broken
+      # index there (e.g. dl.google.com serving a Packages.gz that doesn't
+      # match its own Release file) fails the whole install. Drop that repo
+      # first so it's never consulted.
+      - run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+      - run: npx playwright install --with-deps chromium
 
       - run: npm run typecheck
       - run: npm test
