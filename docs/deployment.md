@@ -117,6 +117,42 @@ push` for this project.** Make SMTP and email-template changes directly in
 the Dashboard (see above), then mirror the change back into `config.toml`
 for documentation only.
 
+### A one-character typo in the Redirect URL allow-list breaks sign-in silently
+
+Found 2026-09-09, the day after the `john-ahlinder` → `upgradr` subdomain
+rename (see git history): the Dashboard's Redirect URLs entry for
+`.../api/auth/callback` had lost its trailing `k` -- almost certainly a
+manual mistype when re-entering the new domain by hand after the rename.
+
+The failure mode is confusing because it does not look like a typo from
+the user's side at all. `signInWithOtp`'s `emailRedirectTo` is generated
+correctly in code (`${APP_ORIGIN}/api/auth/callback`), but GoTrue validates
+that value against the Dashboard's allow-list before honoring it; since the
+allow-listed entry no longer matched character-for-character, GoTrue
+silently fell back to the (equally mistyped) Site URL instead of rejecting
+the request outright. The magic-link email that went out therefore linked
+to `.../api/auth/callbac` -- one character short -- which cannot match this
+Worker's `/api/auth/callback` route at all, so the request fell through to
+the SPA static-asset fallback (`app.all("*", ...)` in
+`apps/web/worker/index.ts`) instead of ever reaching
+`exchangeCodeForSession()`. **This is why the affected user saw a generic
+error rather than anything actionable**: the bug lived entirely in
+Dashboard configuration, so no amount of Worker-side logging could have
+caught it before it reached a browser. (`apps/web/worker/index.ts`'s
+`/api/auth/callback` and `/api/auth/verify` handlers do now log the
+Supabase error's `code`/`status`/`message` on a genuine
+`exchangeCodeForSession`/`verifyOtp` failure, which will help diagnose
+*that* class of problem -- a PKCE `code_verifier` cookie mismatch from
+clicking the link in a different browser/device than the one that
+requested it, or a link already consumed -- but it is a different failure
+mode from this one.)
+
+**Whenever `APP_ORIGIN` changes** (a subdomain rename, a custom domain
+migration, etc.), verify the Dashboard's Site URL and every Redirect URL
+entry character-for-character against the new value -- a diff/copy-paste
+from `wrangler.jsonc`'s `APP_ORIGIN`, not a re-typed value, is the safer
+way to update it.
+
 Required values:
 
 - Project URL

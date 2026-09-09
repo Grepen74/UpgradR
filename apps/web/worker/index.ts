@@ -104,6 +104,11 @@ app.get("/api/auth/callback", async (context) => {
   const supabase = createSupabaseServerClient(context);
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
+    console.error("Auth callback: exchangeCodeForSession failed", {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+    });
     return context.redirect("/?auth_error=exchange_failed");
   }
 
@@ -130,6 +135,11 @@ app.get("/api/auth/verify", async (context) => {
   const supabase = createSupabaseServerClient(context);
   const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
   if (error) {
+    console.error("Auth verify: verifyOtp failed", {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+    });
     return context.redirect("/?auth_error=exchange_failed");
   }
 
