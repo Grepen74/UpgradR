@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
+vi.mock("./supabase", () => ({
+  createSupabaseServerClient: () => ({ auth: { signInWithOtp } }),
+}));
+
 import app from "./index";
 import type { WebEnv } from "./env";
 
@@ -28,5 +33,52 @@ describe("GET /api/health", () => {
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body).toEqual({ service: "upgradr-web", status: "error" });
+  });
+});
+
+describe("POST /api/auth/magic-link", () => {
+  // The emailed link must complete regardless of which browsing context
+  // opens it (see the comment on this handler in ./index.ts) -- so it has
+  // to point at /api/auth/verify's token_hash flow, never back at
+  // /api/auth/callback's PKCE code exchange, which only works in the exact
+  // browsing context that made this POST.
+  it("points emailRedirectTo at /api/auth/verify with a default next of '/'", async () => {
+    signInWithOtp.mockClear();
+    const res = await app.request(
+      "/api/auth/magic-link",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://upgradr.example" },
+        body: JSON.stringify({ email: "person@example.com" }),
+      },
+      makeEnv(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(signInWithOtp).toHaveBeenCalledWith({
+      email: "person@example.com",
+      options: { emailRedirectTo: "https://upgradr.example/api/auth/verify?next=%2F" },
+    });
+  });
+
+  it("carries returnTo through as the verify link's next param", async () => {
+    signInWithOtp.mockClear();
+    const res = await app.request(
+      "/api/auth/magic-link",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://upgradr.example" },
+        body: JSON.stringify({ email: "person@example.com", returnTo: "/opportunities/42" }),
+      },
+      makeEnv(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(signInWithOtp).toHaveBeenCalledWith({
+      email: "person@example.com",
+      options: {
+        emailRedirectTo: "https://upgradr.example/api/auth/verify?next=%2Fopportunities%2F42",
+      },
+    });
   });
 });

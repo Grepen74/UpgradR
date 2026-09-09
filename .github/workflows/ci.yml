@@ -24,7 +24,21 @@ jobs:
           cache: npm
 
       - run: npm ci --no-audit --no-fund
+
+      # ubuntu-latest runners ship Google Chrome's apt repo preconfigured
+      # (for the runner's own preinstalled Chrome). We only need Playwright's
+      # bundled Chromium binary and generic system libs -- never a package
+      # from that repo -- but `playwright install --with-deps` still runs a
+      # blanket `apt-get update` across every configured repo, so a broken
+      # index there (e.g. dl.google.com serving a Packages.gz that doesn't
+      # match its own Release file) fails the whole install. Find and drop
+      # whichever file registers that repo (name/format varies by runner
+      # image) so it's never consulted.
+      - run: |
+          sudo grep -rl "dl.google.com" /etc/apt/sources.list.d/ /etc/apt/sources.list 2>/dev/null \
+            | xargs -r sudo rm -f
       - run: npx playwright install --with-deps chromium
+
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

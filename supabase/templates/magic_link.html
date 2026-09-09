@@ -1,9 +1,25 @@
 <!--
-  UpgradR magic-link sign-in email. Referenced by
-  supabase/config.toml's [auth.email.template.magic_link] and pushed to the
-  hosted project with `supabase config push`. {{ .ConfirmationURL }} is the
-  templating variable Supabase substitutes at send time (see
-  docs/deployment.md).
+  UpgradR magic-link sign-in email. Mirrors supabase/config.toml's
+  [auth.email.template.magic_link] for local dev; the hosted project's copy
+  is edited by hand in the Supabase Dashboard (Project Settings ->
+  Authentication -> Email Templates -> Magic Link) -- see the TRAP comment
+  above [auth] in supabase/config.toml for why `supabase config push` must
+  never be run again, and mirror any future change back into both places.
+
+  The link deliberately does NOT use {{ .ConfirmationURL }} (Supabase's own
+  hosted /verify redirect, which completes via a PKCE code exchange). That
+  exchange needs a code_verifier cookie that only ever exists in the exact
+  browsing context that requested the link, so it silently fails whenever
+  the email is opened somewhere else -- most commonly, requested from an
+  installed desktop/home-screen web app but opened from a mail client, which
+  opens links in the plain browser instead, a different context. Instead
+  this links straight to this app's own /api/auth/verify (apps/web/worker/
+  index.ts), built from {{ .TokenHash }} and {{ .RedirectTo }} per Supabase's
+  documented "redirect to a server-side endpoint" pattern -- verifyOtp only
+  needs the token_hash itself, so it works no matter which browsing context
+  opens it. {{ .RedirectTo }} already is the full ".../api/auth/verify?next=..."
+  URL (see the /api/auth/magic-link handler), so appending the remaining two
+  query params here completes it.
 -->
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
   <!--
@@ -28,7 +44,7 @@
     tracker. This link expires shortly and can only be used once.
   </p>
   <p style="margin: 32px 0;">
-    <a href="{{ .ConfirmationURL }}"
+    <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=magiclink"
        style="background: #1a1a1a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 15px; display: inline-block;">
       Sign in to UpgradR
     </a>
@@ -38,3 +54,4 @@
     account changes will be made.
   </p>
 </div>
+
