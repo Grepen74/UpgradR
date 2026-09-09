@@ -1,6 +1,7 @@
 import {
   OAuthError,
   OAuthErrorCode,
+  bearerAuthChallengeResponse,
   createMcpHandler,
   hostHeaderValidationResponse,
   originValidationResponse,
@@ -58,7 +59,21 @@ app.get(protectedResourceMetadataPath(), (context) => {
 
 app.all("/mcp", async (context) => {
   const config = resolveConfig(context.env);
+  const resourceMetadataUrl = new URL(protectedResourceMetadataPath(), config.resourceUrl).toString();
 
+  // Deliberately NOT `requiredScopes: [config.requiredScope]` here. The SDK's
+  // `requireBearerAuth` folds its `requiredScopes` into the `WWW-Authenticate`
+  // `scope="..."` challenge parameter on every 401/403 response (see
+  // `buildWwwAuthenticateHeader` in the SDK) -- confirmed live against this
+  // Worker (`curl -D- .../mcp`) before this fix returned
+  // `scope="mcp"`. MCP clients read that RFC 6750 hint to build the `scope=`
+  // parameter of their `/authorize` request, but Supabase's OAuth server has
+  // no concept of an app-defined "mcp" scope (it only supports its five
+  // built-in OIDC/offline scopes) and rejects the request before the user
+  // ever reaches our own `/oauth/consent` screen, where the real "mcp" grant
+  // is recorded (`supabase/migrations/20250115122000_mcp_grant_scopes.sql`).
+  // The requirement itself is still enforced below, just after verification,
+  // so it never leaks into the OAuth-facing challenge.
   const gate = requireBearerAuth({
     verifier: {
       async verifyAccessToken(token: string) {
@@ -69,13 +84,18 @@ app.all("/mcp", async (context) => {
         }
       },
     },
-    requiredScopes: [config.requiredScope],
-    resourceMetadataUrl: new URL(protectedResourceMetadataPath(), config.resourceUrl).toString(),
+    resourceMetadataUrl,
   });
 
   const authResult = await gate(context.req.raw);
   if (authResult instanceof Response) {
     return authResult;
+  }
+
+  if (!authResult.scopes.includes(config.requiredScope)) {
+    return bearerAuthChallengeResponse(new OAuthError(OAuthErrorCode.InsufficientScope, "Insufficient scope"), {
+      resourceMetadataUrl,
+    });
   }
 
   // A fresh handler (and fresh McpServer via the factory) per request keeps

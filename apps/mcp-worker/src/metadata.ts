@@ -15,14 +15,23 @@ export function buildProtectedResourceMetadata(config: ResolvedMcpConfig): Recor
     resource: `${config.resourceUrl}/mcp`,
     authorization_servers: [config.jwtIssuer],
     bearer_methods_supported: ["header"],
-    scopes_supported: [
-      config.requiredScope,
-      "profile:read",
-      "opportunities:read",
-      "applications:read",
-      "applications:write",
-      "applications:delete",
-    ],
+    // RFC 9728 says clients may copy this list verbatim into the `scope=`
+    // parameter of the authorization-server request -- and MCP clients
+    // (verified with Claude, 2026-09-09: it requested `scope=mcp
+    // offline_access` and was rejected before ever reaching our consent
+    // screen) do exactly that. Supabase's OAuth server only ever accepts
+    // its five built-in OIDC/offline scopes (confirmed against its live
+    // `/.well-known/oauth-authorization-server/auth/v1` document) and 400s
+    // on anything else, so listing our app-defined scopes (`mcp`,
+    // `profile:read`, ...) here breaks authorization for every client that
+    // follows the spec. Those scopes are never granted through the OAuth
+    // `scope` parameter anyway -- see
+    // supabase/migrations/20250115122000_mcp_grant_scopes.sql: the user
+    // grants them on our own /oauth/consent screen and
+    // app.mcp_access_token_hook() writes the grant into the token. Only
+    // advertise `offline_access`, the one AS-supported scope a client
+    // actually needs to request (for a refresh token / persistent access).
+    scopes_supported: ["offline_access"],
     resource_documentation: `${config.resourceUrl}/`,
   };
 }
