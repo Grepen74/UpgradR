@@ -168,6 +168,7 @@ export type JobSearchPreferences = {
   industries: string[];
   excludedCompanies: string[];
   notes: string | null;
+  minimumMatchScore: number | null;
 };
 
 export type TaskSummary = {

@@ -45,6 +45,11 @@ export const jobSearchPreferencesSchema = z.object({
   industries: z.array(z.string().trim().min(1).max(120)).max(30),
   excludedCompanies: z.array(z.string().trim().min(1).max(200)).max(100),
   notes: z.string().trim().max(4_000).nullable(),
+  // Governs create_job_proposals only, not assess_job_match -- see
+  // jobSearchPreferencesResponseSchema below for the full agent-facing
+  // semantics. Advisory, like every other preference-based constraint here:
+  // nothing in Postgres rejects a proposal that ignores it.
+  minimumMatchScore: z.number().int().min(0).max(100).nullable(),
 });
 
 export const candidateProfileSchema = z.object({
@@ -138,6 +143,9 @@ export const jobSearchPreferencesResponseSchema = z.object({
     .describe("Never propose these employers, under any circumstances."),
   notes: nullable(z.string()).describe(
     "Free text the user wrote for you. May add hard constraints the structured fields cannot express, so read it before searching.",
+  ),
+  minimumMatchScore: nullable(z.number()).describe(
+    "Floor for create_job_proposals ONLY -- a separate, POST-score gate, never assess_job_match. Score every candidate honestly first (see the create_job_proposals guidance for the bands); only once scored, do not call create_job_proposals for one whose matchScore is below this floor, or that you left unscored. Never inflate a score to get a candidate past it. Null means no floor is set: propose across the full range, including low and unscored candidates, exactly as if this field did not exist.",
   ),
   isConfigured: z
     .boolean()

@@ -2350,6 +2350,15 @@ input[type="radio"] {
   accent-color: var(--accent);
 }
 
+/* type="range" would otherwise inherit .stacked-form input's text-field
+   border/padding and look like a boxed text input rather than a slider. */
+.stacked-form input[type="range"] {
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+
 /* Trailing controls on an entity row (status pill, Remove button). */
 .entity-actions {
   display: flex;

@@ -131,7 +131,8 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
         "Duplicate results include the existing opportunity's id and current status, so a closed match means the user already rejected or dismissed that job — do not propose it again. " +
         "Set allowSimilar on an item only to override a possible_duplicate you have confirmed is a genuinely different opening. " +
         "Use list_known_opportunity_keys once per run to filter candidates before calling this tool. " +
-        "The user's Inbox (proposed, unreviewed opportunities) is capped at 50: once it is full, further would-be-new items come back as inbox_full instead of being created. This is not an error to retry -- ask the user to triage their Inbox (shortlist or close some proposals) to free up room, or use triage_proposals, before proposing more.",
+        "The user's Inbox (proposed, unreviewed opportunities) is capped at 50: once it is full, further would-be-new items come back as inbox_full instead of being created. This is not an error to retry -- ask the user to triage their Inbox (shortlist or close some proposals) to free up room, or use triage_proposals, before proposing more. " +
+        "If get_job_search_preferences returned a non-null minimumMatchScore, that is a floor on this call: score every candidate honestly first, then do not include one here if its matchScore is below the floor or if you left it unscored. Never inflate a score just to get a candidate past the floor.",
       inputSchema: createJobProposalsSchema,
     },
     async ({ proposals }, { supabase, auth }) => {

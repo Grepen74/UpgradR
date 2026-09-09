@@ -119,9 +119,24 @@ describe("MCP prompts", () => {
       expect(text).toContain("not a computed metric");
     });
 
-    it("says there is no minimum score required to propose a candidate", () => {
+    it("says there is no minimum score required to propose a candidate absent a user-set floor", () => {
       const text = render(FULL, "weekly_job_search");
       expect(text).toContain("no minimum score to be proposed at all");
+    });
+
+    it("adds a post-score floor step, ordered after scoring and before proposing", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("4c. Apply the score floor");
+      expect(text.indexOf("4b. Score on evidence")).toBeLessThan(text.indexOf("4c. Apply the score floor"));
+      expect(text.indexOf("4c. Apply the score floor")).toBeLessThan(text.indexOf("5. Propose"));
+      expect(text).toContain("minimumMatchScore");
+      expect(text).toContain("an omitted score is never assumed to pass");
+    });
+
+    it("omits the score-floor step entirely without profile:read, since there is no preference to check", () => {
+      const withoutProfile = FULL.filter((scope) => scope !== "profile:read");
+      const text = render(withoutProfile, "weekly_job_search");
+      expect(text).not.toContain("4c. Apply the score floor");
     });
 
     it("applies an optional focus without replacing saved preferences", () => {

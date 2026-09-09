@@ -229,6 +229,29 @@ proposing — with the reasoning stated in `matchRationale`.
 `notes` is free text the user wrote for you. It can introduce hard constraints
 the structured fields cannot express, so read it before searching.
 
+### `minimumMatchScore` is a hard filter too, but it runs after scoring, not before
+
+Every filter above is checked before the profile is even consulted, because
+they describe what the user is willing to consider at all. `minimumMatchScore`
+is different: it is checked against `matchScore`, and `matchScore` does not
+exist until scoring has happened. So it cannot join the pass/fail gate above —
+there is nothing to gate on yet at that point in a run.
+
+Treat it as a second gate, applied immediately after scoring and before
+`create_job_proposals`: score every candidate that survived the filters above
+honestly, on the bands `weekly_job_search` gives you, and only then drop
+whatever scored below `minimumMatchScore` — including anything you left
+unscored, since an omitted score is never assumed to clear a floor the user
+set. Do not fold this into scoring itself by inflating a number to get a
+candidate past it; the floor is a filter on an honest score, not a reason to
+produce a dishonest one.
+
+`minimumMatchScore` is `null` by default, meaning no floor: a low, honestly-
+scored candidate is still proposed, exactly as if this preference did not
+exist. It only ever applies to `create_job_proposals`; `assess_job_match`
+re-scores a single opportunity the user already has in their pipeline and is
+never filtered by it.
+
 ### `relevantExperience` is usually the only background you get
 
 `get_candidate_profile` returns `experiences`, `education`, and `skills` as
@@ -297,6 +320,12 @@ When it is false, do not search on the empty row. Infer a brief from the
 candidate profile and **say in your report that you did, and what you assumed**,
 so the user can correct it. `updatedAt` gives the brief's age; stale filters are
 still the user's stated intent, so mention the age rather than overriding them.
+
+`minimumMatchScore` never contributes to `isConfigured`, even when it is the
+only field the user set. It is a post-score filter, not a search brief — a
+user who has only dialed in a score floor still has no stated roles,
+locations, or notes to search on, so `isConfigured` stays `false` and brief
+inference still applies.
 
 ## Headless / scripted clients
 
