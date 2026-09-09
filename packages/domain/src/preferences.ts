@@ -17,6 +17,13 @@ import type { JobSearchPreferences } from "@upgradr/contracts";
  * `compensationCurrency` alone does not count. It qualifies a floor rather
  * than constraining anything by itself, so a currency with no amount beside it
  * is not a brief.
+ *
+ * `minimumMatchScore` deliberately does not count either, for a different
+ * reason: it is not part of the brief an agent searches on at all. It is a
+ * POST-scoring filter applied only once a candidate has already been found
+ * and assessed against a brief -- so a user who sets only a score floor still
+ * has no brief for an agent to search on, and this must still return false to
+ * trigger brief-inference from the candidate profile.
  */
 export function isPreferencesConfigured(preferences: JobSearchPreferences): boolean {
   return (

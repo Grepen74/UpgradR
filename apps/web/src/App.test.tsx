@@ -123,6 +123,7 @@ describe("App", () => {
           industries: [],
           excludedCompanies: [],
           notes: null,
+          minimumMatchScore: null,
         });
       }
       if (url.includes("/api/profile")) {

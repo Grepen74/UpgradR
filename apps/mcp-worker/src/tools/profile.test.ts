@@ -28,6 +28,7 @@ const seededRow = {
   industries: [],
   excluded_companies: [],
   notes: null,
+  minimum_match_score: null,
   updated_at: "2026-09-01T10:00:00+00:00",
 };
 
@@ -106,6 +107,20 @@ describe("get_job_search_preferences", () => {
     expect(preferences["updatedAt"]).toBeNull();
   });
 
+  it("returns null minimumMatchScore for the signup-seeded row (no floor)", async () => {
+    const preferences = await readPreferences([seededRow]);
+    expect(preferences["minimumMatchScore"]).toBeNull();
+    // A score floor alone is not a search brief -- see
+    // packages/domain/src/preferences.ts#isPreferencesConfigured.
+    expect(preferences["isConfigured"]).toBe(false);
+  });
+
+  it("returns a stored minimumMatchScore and keeps isConfigured false when it is the only thing set", async () => {
+    const preferences = await readPreferences([{ ...seededRow, minimum_match_score: 70 }]);
+    expect(preferences["minimumMatchScore"]).toBe(70);
+    expect(preferences["isConfigured"]).toBe(false);
+  });
+
   it("declares an output schema, without which the field descriptions reach nobody", async () => {
     const entry = register([seededRow]).get("get_job_search_preferences");
     expect(entry!.config.outputSchema).toBeDefined();
@@ -145,6 +160,7 @@ describe("output schemas are expressible as JSON Schema", () => {
     const json = JSON.stringify(z.toJSONSchema(jobSearchPreferencesResponseSchema));
     expect(json).toContain("factor of 12");
     expect(json).toContain("wide-open search");
+    expect(json).toContain("POST-score");
   });
 
   it("publishes what relevantExperience is for", () => {

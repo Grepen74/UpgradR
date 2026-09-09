@@ -15,7 +15,14 @@ const emptyPreferences: JobSearchPreferences = {
   industries: [],
   excludedCompanies: [],
   notes: null,
+  minimumMatchScore: null,
 };
+
+// Starting point offered when the user first enables the floor. Matches the
+// "plausible, but with a real gap" band documented for agents in
+// apps/mcp-worker/src/prompts/register.ts, a reasonable middle ground rather
+// than an arbitrary number.
+const DEFAULT_MATCH_SCORE_FLOOR = 60;
 
 /**
  * The list-valued preferences are edited as free text rather than as arrays.
@@ -62,6 +69,11 @@ export function PreferencesTab() {
   const [form, setForm] = useState<PreferencesForm>(toForm(emptyPreferences));
   const [message, setMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
+  // Tracks the last score the user dialed in, independent of the toggle's
+  // on/off state. Without this, disabling the floor (which stores `null`)
+  // and re-enabling it before saving would lose whatever value was set and
+  // fall back to the default every time -- surprising for an unsaved edit.
+  const [scoreFloorDraft, setScoreFloorDraft] = useState(DEFAULT_MATCH_SCORE_FLOOR);
 
   useEffect(() => {
     void api
@@ -69,6 +81,9 @@ export function PreferencesTab() {
       .then((loaded) => {
         setPreferences(loaded);
         setForm(toForm(loaded));
+        if (loaded.minimumMatchScore !== null) {
+          setScoreFloorDraft(loaded.minimumMatchScore);
+        }
       })
       .catch((error) => {
         setMessage(error instanceof Error ? error.message : "Unable to load job preferences.");
@@ -229,6 +244,47 @@ export function PreferencesTab() {
               }}
             />
             <p className="field-hint">Separate multiple entries with commas.</p>
+          </div>
+          <div className="wide">
+            <label className="checkbox-row" htmlFor="minimumMatchScoreEnabled">
+              <input
+                id="minimumMatchScoreEnabled"
+                type="checkbox"
+                checked={form.minimumMatchScore !== null}
+                onChange={(event) => {
+                  const enabled = event.currentTarget.checked;
+                  setForm((current) => ({
+                    ...current,
+                    // Disabling stores null (no floor, today's unchanged
+                    // behavior). Re-enabling restores the last value the user
+                    // dialed in rather than resetting to the default, so an
+                    // accidental toggle before saving never loses an edit.
+                    minimumMatchScore: enabled ? scoreFloorDraft : null,
+                  }));
+                }}
+              />
+              <span>Only propose matches scoring at least a minimum</span>
+            </label>
+            <input
+              id="minimumMatchScore"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              disabled={form.minimumMatchScore === null}
+              aria-label="Minimum match score"
+              value={form.minimumMatchScore ?? scoreFloorDraft}
+              onChange={(event) => {
+                const value = Number(event.currentTarget.value);
+                setScoreFloorDraft(value);
+                setForm((current) => ({ ...current, minimumMatchScore: value }));
+              }}
+            />
+            <p className="field-hint">
+              {form.minimumMatchScore === null
+                ? "Off: agents propose across the full range, including low and unscored matches."
+                : `Require a score of at least ${form.minimumMatchScore}. Agents score honestly first, then simply do not propose anything -- scored or not -- below this floor. This only filters what gets proposed; it does not re-score or hide opportunities already in your pipeline.`}
+            </p>
           </div>
           <div className="wide">
             <label htmlFor="notes">Search notes</label>

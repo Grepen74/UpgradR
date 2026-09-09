@@ -112,15 +112,26 @@ export function registerProfileTools(server: McpServer, ctx: ToolContext): void 
         "A posting that states no compensation is NOT a failed test: most do not state one. Propose it and say the pay was " +
         "unstated. If the posting is in another currency, this app has no exchange-rate source, so convert it yourself and " +
         "state the rate you used in `matchRationale`.\n\n" +
+        "POST-SCORE, not a filter on candidates you search for -- `minimumMatchScore`. This is a floor on `matchScore` " +
+        "itself, checked only after you have scored a candidate honestly (create_job_proposals documents the scoring " +
+        "bands). When it is non-null: do not call create_job_proposals for a candidate whose matchScore falls below it, " +
+        "and treat a candidate you left unscored as failing it too -- an omitted score is never assumed to pass. Score " +
+        "first, then filter; never inflate a score to get a candidate past this floor. Null means the user has not set " +
+        "one: propose across the full range exactly as if this field did not exist, including low and unscored " +
+        "candidates. Because reading this floor requires `profile:read`, an agent connected with only " +
+        "`applications:write` cannot see it and cannot honor it -- the same limitation every other preference here " +
+        "already has.\n\n" +
         "Check `isConfigured` first. When it is false the user has never set a brief, and searching on this empty row would " +
-        "produce an unconstrained search they never asked for.",
+        "produce an unconstrained search they never asked for. Note that `isConfigured` does NOT take `minimumMatchScore` " +
+        "into account: a user who has only set a score floor still has no brief, and you should still infer one from the " +
+        "candidate profile.",
       inputSchema: emptyInputSchema,
       outputSchema: jobSearchPreferencesResponseSchema,
     },
     async (_input, { supabase }) => {
       const rows = await supabase.get<Array<Record<string, unknown>>>("job_search_preferences", {
         select:
-          "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes,updated_at",
+          "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes,minimum_match_score,updated_at",
         limit: 1,
       });
 
@@ -135,6 +146,7 @@ export function registerProfileTools(server: McpServer, ctx: ToolContext): void 
         industries: row?.["industries"] ?? [],
         excludedCompanies: row?.["excluded_companies"] ?? [],
         notes: row?.["notes"] ?? null,
+        minimumMatchScore: row?.["minimum_match_score"] ?? null,
       });
 
       // Derived, not stored: every account is seeded with this exact row at

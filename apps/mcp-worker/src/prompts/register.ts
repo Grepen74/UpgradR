@@ -126,14 +126,20 @@ function registerWeeklyJobSearch(server: McpServer, ctx: ToolContext): void {
           "- **90-100:** every requirement the posting states is met, with specific evidence cited for each.\n" +
           "- **70-89:** the core requirements are met with cited evidence; at most one or two secondary requirements are unmet or unverifiable.\n" +
           "- **50-69:** plausible for the role, but with a real, named gap in required experience, seniority, or domain — not just a stretch on a nice-to-have.\n" +
-          "- **Below 50:** speculative — you are proposing it on directional or adjacent fit rather than on matched evidence. Still propose it if it survived 4a; just say so plainly in `matchRationale` rather than inflating the number.\n" +
-          "There is no minimum score to be proposed at all: a low score is the honest output of this step, not a reason to withhold the candidate. `strengths` and `gaps` carry the specifics; `matchScore` only needs to place the candidate in the right band.",
+          "- **Below 50:** speculative — you are proposing it on directional or adjacent fit rather than on matched evidence. Still propose it if it survived 4a and 4c; just say so plainly in `matchRationale` rather than inflating the number.\n" +
+          "Absent a user-set floor (4c), there is no minimum score to be proposed at all: a low score is the honest output of this step, not a reason to withhold the candidate. `strengths` and `gaps` carry the specifics; `matchScore` only needs to place the candidate in the right band.",
       );
+
+      if (scopes.profile) {
+        sections.push(
+          "**4c. Apply the score floor.**\nThis is a second, POST-score gate — separate from 4a's pre-score intent gate, and it only exists if `get_job_search_preferences` returned a non-null `minimumMatchScore`. When it is non-null: drop every candidate you scored below that floor, and drop any candidate you left unscored too — an omitted score is never assumed to pass a floor the user set. Do not inflate a score to sneak a candidate past it; score honestly in 4b first, filter here second.\nWhen `minimumMatchScore` is null, skip this step entirely: every candidate that survived 4a and 4b moves on to step 5, low and speculative scores included, exactly as before this preference existed.",
+        );
+      }
 
       sections.push(
         scopes.write
-          ? `**5. Propose.**\nCall \`create_job_proposals\` with up to ${cap} of the best remaining matches (20 max per call). Supply \`sourceUrl\` and \`sourceProvider\` always, and \`externalId\` whenever the posting exposes a stable job id — that id is the most reliable duplicate key and survives URL changes. Fill in \`matchScore\`, \`matchRationale\`, \`strengths\`, and \`gaps\`.\nDo **not** set \`allowSimilar\` routinely. It exists only for when you have positively confirmed that a \`possible_duplicate\` is a genuinely different opening at the same company. Exact URL and provider-id duplicates cannot be overridden at all.`
-          : `**5. Propose.**\n${missingScopeNotice("create proposals", SCOPES.applicationsWrite)}\nInstead present your shortlist in the conversation — title, company, location, URL, and rationale — so the user can add the ones they want by hand.`,
+          ? `**5. Propose.**\nCall \`create_job_proposals\` with up to ${cap} of the best matches that survived 4a through 4c (20 max per call). Supply \`sourceUrl\` and \`sourceProvider\` always, and \`externalId\` whenever the posting exposes a stable job id — that id is the most reliable duplicate key and survives URL changes. Fill in \`matchScore\`, \`matchRationale\`, \`strengths\`, and \`gaps\`.\nDo **not** set \`allowSimilar\` routinely. It exists only for when you have positively confirmed that a \`possible_duplicate\` is a genuinely different opening at the same company. Exact URL and provider-id duplicates cannot be overridden at all.`
+          : `**5. Propose.**\n${missingScopeNotice("create proposals", SCOPES.applicationsWrite)}\nInstead present your shortlist (the matches that survived 4a through 4c) in the conversation — title, company, location, URL, and rationale — so the user can add the ones they want by hand.`,
       );
 
       sections.push(

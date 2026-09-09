@@ -115,6 +115,11 @@ user's explicit say-so each time.
   period — compare against the bottom of a range; unstated pay is not a
   failure). Use `list_known_opportunity_keys` once per run to avoid
   duplicates before calling `create_job_proposals`.
+- If `minimumMatchScore` is non-null, score every candidate honestly first,
+  then drop anything scored below it (or left unscored) before calling
+  `create_job_proposals` — this is a post-score filter, applied after the
+  other constraints above, not instead of them. It never affects
+  `isConfigured`.
 - Destructive or bulk actions (deleting an application, note, or follow-up;
   archiving several applications) are two-step: call
   `prepare_destructive_operation` first, show the user exactly what it

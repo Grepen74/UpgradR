@@ -1,13 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { JobSearchPreferences } from "./api";
 import { PreferencesTab } from "./PreferencesTab";
 
 function requestUrl(input: RequestInfo | URL): string {
   return typeof input === "string" ? input : ((input as Request).url ?? String(input));
 }
 
-const LOADED = {
+const LOADED: JobSearchPreferences = {
   targetRoles: ["iOS developer"],
   locations: [],
   remotePolicy: "flexible",
@@ -17,9 +18,13 @@ const LOADED = {
   industries: [],
   excludedCompanies: [],
   notes: null,
+  minimumMatchScore: null,
 };
 
-function mockApi(options: { onSave?: (body: unknown) => void; saveStatus?: number } = {}) {
+function mockApi(
+  options: { onSave?: (body: unknown) => void; saveStatus?: number; loaded?: JobSearchPreferences } = {},
+) {
+  const loaded = options.loaded ?? LOADED;
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = requestUrl(input);
     if (url.includes("/api/preferences") && (init?.method ?? "GET").toUpperCase() !== "GET") {
@@ -30,13 +35,13 @@ function mockApi(options: { onSave?: (body: unknown) => void; saveStatus?: numbe
           headers: { "Content-Type": "application/json" },
         });
       }
-      return new Response(JSON.stringify(LOADED), {
+      return new Response(JSON.stringify(loaded), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
     if (url.includes("/api/preferences")) {
-      return new Response(JSON.stringify(LOADED), {
+      return new Response(JSON.stringify(loaded), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -186,6 +191,95 @@ describe("PreferencesTab", () => {
           compensationCurrency: "SEK",
         }),
       );
+    });
+  });
+
+  describe("minimum match score floor", () => {
+    function scoreToggle() {
+      return screen.getByLabelText(/only propose matches scoring/i) as HTMLInputElement;
+    }
+
+    function scoreSlider() {
+      return screen.getByLabelText(/^minimum match score$/i) as HTMLInputElement;
+    }
+
+    it("loads disabled with the slider disabled, matching an unset floor", async () => {
+      mockApi();
+      render(<PreferencesTab />);
+      await findTargetRoles();
+
+      expect(scoreToggle().checked).toBe(false);
+      expect(scoreSlider().disabled).toBe(true);
+    });
+
+    it("loads enabled with the stored value when a floor is already set", async () => {
+      mockApi({ loaded: { ...LOADED, minimumMatchScore: 75 } });
+      render(<PreferencesTab />);
+      await findTargetRoles();
+
+      expect(scoreToggle().checked).toBe(true);
+      expect(scoreSlider().disabled).toBe(false);
+      expect(scoreSlider().value).toBe("75");
+    });
+
+    it("enabling the floor sends a default value; disabling sends null", async () => {
+      const onSave = vi.fn();
+      mockApi({ onSave });
+      render(<PreferencesTab />);
+      await findTargetRoles();
+
+      fireEvent.click(scoreToggle());
+      fireEvent.click(screen.getByRole("button", { name: /save preferences/i }));
+      await waitFor(() => {
+        expect(onSave).toHaveBeenLastCalledWith(
+          expect.objectContaining({ minimumMatchScore: expect.any(Number) }),
+        );
+      });
+      expect(onSave.mock.calls.at(-1)?.[0].minimumMatchScore).not.toBeNull();
+
+      fireEvent.click(scoreToggle());
+      fireEvent.click(screen.getByRole("button", { name: /save preferences/i }));
+      await waitFor(() => {
+        expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ minimumMatchScore: null }));
+      });
+    });
+
+    it("saves the value the slider is moved to", async () => {
+      const onSave = vi.fn();
+      mockApi({ onSave });
+      render(<PreferencesTab />);
+      await findTargetRoles();
+
+      fireEvent.click(scoreToggle());
+      fireEvent.change(scoreSlider(), { target: { value: "85" } });
+      fireEvent.click(screen.getByRole("button", { name: /save preferences/i }));
+
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ minimumMatchScore: 85 }));
+      });
+    });
+
+    // Disabling stores null in the form, but toggling back on before saving
+    // must restore the drafted value rather than resetting to the default --
+    // otherwise an accidental double-click on the toggle silently discards
+    // whatever the user had dialed in.
+    it("restores the drafted value when re-enabled before saving", async () => {
+      const onSave = vi.fn();
+      mockApi({ onSave });
+      render(<PreferencesTab />);
+      await findTargetRoles();
+
+      fireEvent.click(scoreToggle());
+      fireEvent.change(scoreSlider(), { target: { value: "85" } });
+      fireEvent.click(scoreToggle());
+      expect(scoreSlider().disabled).toBe(true);
+      fireEvent.click(scoreToggle());
+      expect(scoreSlider().value).toBe("85");
+
+      fireEvent.click(screen.getByRole("button", { name: /save preferences/i }));
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ minimumMatchScore: 85 }));
+      });
     });
   });
 });

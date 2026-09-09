@@ -14,6 +14,7 @@ const seeded: JobSearchPreferences = {
   industries: [],
   excludedCompanies: [],
   notes: null,
+  minimumMatchScore: null,
 };
 
 describe("isPreferencesConfigured", () => {
@@ -47,5 +48,9 @@ describe("isPreferencesConfigured", () => {
 
   it("treats an emptied form as unconfigured again", () => {
     expect(isPreferencesConfigured({ ...seeded, notes: "" })).toBe(false);
+  });
+
+  it("does not count a match-score floor on its own, since it filters proposals rather than expressing a brief", () => {
+    expect(isPreferencesConfigured({ ...seeded, minimumMatchScore: 70 })).toBe(false);
   });
 });

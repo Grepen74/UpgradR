@@ -100,7 +100,7 @@ accountRoute.get("/export", async (context) => {
     supabase
       .from("job_search_preferences")
       .select(
-        "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes,created_at,updated_at",
+        "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes,minimum_match_score,created_at,updated_at",
       )
       .eq("owner_id", userId)
       .maybeSingle(),

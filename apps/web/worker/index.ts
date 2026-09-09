@@ -590,7 +590,7 @@ app.get("/api/preferences", async (context) => {
   const { data, error } = await auth.supabase
     .from("job_search_preferences")
     .select(
-      "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes",
+      "target_roles,locations,remote_policy,minimum_compensation,minimum_compensation_period,compensation_currency,industries,excluded_companies,notes,minimum_match_score",
     )
     .eq("owner_id", auth.userId)
     .single();
@@ -608,6 +608,7 @@ app.get("/api/preferences", async (context) => {
     industries: data.industries,
     excludedCompanies: data.excluded_companies,
     notes: data.notes,
+    minimumMatchScore: data.minimum_match_score,
   });
 });
 
@@ -635,6 +636,7 @@ app.patch("/api/preferences", async (context) => {
       industries: preferences.industries,
       excluded_companies: preferences.excludedCompanies,
       notes: preferences.notes,
+      minimum_match_score: preferences.minimumMatchScore,
     },
     { onConflict: "owner_id" },
   );
