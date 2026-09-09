@@ -18,8 +18,8 @@ name: Deploy
 #                            one Cloudflare account; omit otherwise
 #
 # This deploys application code only. It does not run Supabase migrations
-# against production -- that stays a separate, deliberate step
-# (`supabase db push` / `supabase migration up --linked`).
+# against production -- that stays a separate, deliberate step: dispatch
+# `db-migrate.yml` first if this deploy depends on a new migration.
 on:
   workflow_dispatch:
     inputs:

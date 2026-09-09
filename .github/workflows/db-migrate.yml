@@ -1,0 +1,67 @@
+name: Migrate Database
+
+# Manual, on-demand application of pending supabase/migrations/*.sql files to
+# the production Supabase project. Nothing here runs automatically on push --
+# you dispatch it deliberately, same as deploy.yml.
+#
+# Kept as its own workflow rather than folded into deploy.yml on purpose:
+# schema changes are forward-only with no generated `down` migration (see
+# supabase/README.md), so they deserve their own review/dry-run step and
+# their own credentials (a DB password + access token, not a
+# Workers-scoped Cloudflare token), independent of whether you're also
+# redeploying application code that day.
+#
+# Run this BEFORE deploy.yml whenever a merge added a migration the new
+# Worker code depends on (a new column/table it reads or writes) -- a Worker
+# that ships expecting a column that isn't there yet will fail at runtime,
+# not at deploy time.
+#
+# Requires these repository secrets (Settings -> Secrets and variables ->
+# Actions) before this workflow can succeed:
+#   SUPABASE_ACCESS_TOKEN  - a personal access token
+#                            (supabase.com/dashboard/account/tokens)
+#   SUPABASE_DB_PASSWORD   - the linked project's Postgres password
+#   SUPABASE_PROJECT_ID    - the project ref from its dashboard URL
+#                            (supabase.com/dashboard/project/<this part>)
+#
+# Trunk is `main`: branch off main, PR back into main, then dispatch this
+# workflow against main once the PR is merged.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type APPLY to push migrations for real. Anything else only previews (dry-run) and applies nothing.'
+        required: true
+        type: string
+        default: "dry-run"
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Preview pending migrations (dry run, always runs)
+        run: supabase db push --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}" --dry-run
+
+      - name: Apply pending migrations
+        if: ${{ inputs.confirm == 'APPLY' }}
+        run: supabase db push --project-ref "${{ secrets.SUPABASE_PROJECT_ID }}" --yes
+
+      - name: Skipped (dry-run only)
+        if: ${{ inputs.confirm != 'APPLY' }}
+        run: |
+          echo "confirm input was '${{ inputs.confirm }}', not APPLY -- nothing was pushed."
+          echo "Re-run this workflow with confirm=APPLY once the dry-run output above looks right."
