@@ -254,7 +254,12 @@ Before deploying either Worker:
    steps for a fresh environment, or confirm no new required binding was
    introduced for an existing one (cross-check each Worker's `env.ts`
    against its `.dev.vars.example` and `wrangler.jsonc`).
-5. Before enabling a hosted MCP endpoint or exposing new OAuth/RLS/Storage
+5. **If this deploy adds or changes `supabase/migrations/*.sql`**, dispatch
+   `db-migrate.yml` against `main` first (see [Deployment](deployment.md)'s
+   "Ongoing migrations") and let it complete before `deploy.yml` -- a
+   Worker that ships expecting a column/table the migration adds will fail
+   at runtime, not at deploy time, if the schema isn't there yet.
+6. Before enabling a hosted MCP endpoint or exposing new OAuth/RLS/Storage
    surface to real users, complete the gates already defined in [MCP
    interface's "Deployment gate"](mcp.md#deployment-gate) and [Threat
    model's "Required pre-release

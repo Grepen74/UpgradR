@@ -14,9 +14,25 @@ initial per-environment setup and required configuration.
 4. Set the site URL to the deployed web application and the authorization path to `/oauth/consent`.
 5. **Register `app.mcp_access_token_hook` as the Custom Access Token hook**
    (Auth → Hooks). See below -- this is the highest-consequence setting here.
-6. Apply migrations with the Supabase CLI.
+6. Apply migrations with the Supabase CLI (`supabase db push --linked`, or
+   dispatch the `db-migrate.yml` GitHub Actions workflow once its repository
+   secrets are configured -- see "Ongoing migrations" below).
 7. Run database tests against a disposable environment before production.
 8. Configure private Storage limits and allowed MIME types.
+
+### Ongoing migrations
+
+Step 6 above is for the *initial* schema. Every migration added after that
+ships the same way: merge the PR that adds
+`supabase/migrations/<timestamp>_*.sql`, then dispatch `db-migrate.yml`
+(Actions tab, or `gh workflow run db-migrate.yml -f confirm=APPLY`) against
+`main`. It is deliberately its own workflow, separate from `deploy.yml` --
+see that workflow's header comment for why -- so a code deploy never
+silently assumes a schema change already landed. **Run it before `deploy.yml`**
+whenever the new Worker code reads or writes a column/table the migration
+adds; the Worker deploy itself has no way to detect that its schema
+dependency is missing until a request actually 400s against PostgREST at
+runtime.
 
 ### The custom access token hook is mandatory
 
