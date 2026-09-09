@@ -130,9 +130,9 @@ sign you in again.
 
 ## Using it
 
-**Note 1: This skill will typically result in a deep web seek for open positions on the web. To avoid confirming access to all attempted URLs, enable `autopilot` mode in Copilot CLI before proceeding**
+**Note 1:** Before starting a search, go to `Profile` page in the [UpgradR](https://upgradr-web.upgradr.workers.dev) app, and add who you are and what you are looking for. Ideally uploading your LinkedIn profile pdf - this empowers the search to actually find relevant positions.
 
-**Note 2: Before starting a search, go to `Profile` page in the [UpgradR](https://upgradr-web.upgradr.workers.dev) app, and add who you are and what you are looking for. Ideally uploading your LinkedIn profile pdf - this empowers the search to actually find relevant positions.**
+**Note 2:** This skill will typically result in a deep web seek for open positions on the web. To avoid confirming access to all attempted URLs, enable `autopilot` mode in Copilot CLI before proceeding.
 
 Once signed in, just talk to Copilot CLI normally, for example:
 
