@@ -26,7 +26,7 @@ ever see your own data.
    needed). If you'd rather get it a different way, anyone who already has
    it can also just send you the same `upgradr-mcp-skill.zip` file directly
    (email, Slack, AirDrop, USB stick — it's only two small text files).
-4. About **10 minutes**, mostly waiting for one install to finish.
+4. About **2 minutes** (or up to **10 minutes** if you don't already have Copilot CLI installed already)
 
 > **Already have GitHub Copilot CLI installed and working on this
 > computer?** Then you already have Node.js too (Copilot CLI needs it to
@@ -81,23 +81,10 @@ now; you'll come back to it in Step 4.
 1. Unzip the `upgradr-mcp-skill.zip` file you downloaded (or were given) in
    the previous section. You should end up with two files: `SKILL.md` and
    `mcp.mjs`.
-2. Create a folder for it and move both files into it:
-
-   **macOS or Linux**, in the terminal:
-   ```
-   $ mkdir -p ~/.copilot/skills/upgradr-mcp
-   ```
-   Then move (or drag, in Finder) `SKILL.md` and `mcp.mjs` into the
-   `.copilot/skills/upgradr-mcp` folder inside your home folder. (In
-   Finder, press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal
+2. Then move (or drag, in Finder) the unzipped folder into the 
+   `.copilot/skills` folder inside your home folder (typically at `~/.copilot/skills)`. 
+   (In Finder, press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal
    hidden folders like `.copilot` if you don't see it.)
-
-   **Windows**, in PowerShell:
-   ```
-   $ mkdir "$env:USERPROFILE\.copilot\skills\upgradr-mcp"
-   ```
-   Then move both files (via File Explorer, or drag-and-drop) into
-   `C:\Users\<your name>\.copilot\skills\upgradr-mcp\`.
 
 You should now have:
 ```
@@ -107,7 +94,7 @@ You should now have:
 
 ## Step 4 — Load the skill and sign in
 
-Start Copilot CLI again:
+Start Copilot CLI:
 ```
 $ copilot
 ```
