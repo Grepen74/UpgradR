@@ -80,8 +80,8 @@ now; you'll come back to it in Step 4.
 
 1. Unzip the `upgradr-mcp-skill.zip` file you downloaded (or were given) in
    the previous section. You should end up with two files: `SKILL.md` and
-   `mcp.mjs`.
-2. Then move (or drag, in Finder) the unzipped folder into the 
+   `mcp.mjs` in an `upgradr-mcp` folder.
+2. Then move (or drag, in Finder) the full unzipped folder into the 
    `.copilot/skills` folder inside your home folder (typically at `~/.copilot/skills)`. 
    (In Finder, press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal
    hidden folders like `.copilot` if you don't see it.)
@@ -129,6 +129,8 @@ sign you in again.
 > same conversation.
 
 ## Using it
+
+** Note: this skill will typically result in a deep web seek for open positions on the web. To avoid confirming access to all attempted URLs, enable `autopilot` mode in Copilot CLI before proceeding **
 
 Once signed in, just talk to Copilot CLI normally, for example:
 
