@@ -117,6 +117,47 @@ push` for this project.** Make SMTP and email-template changes directly in
 the Dashboard (see above), then mirror the change back into `config.toml`
 for documentation only.
 
+### Magic-link email now points at `/api/auth/verify`, not `/api/auth/callback`
+
+Found 2026-09-09: installing UpgradR as a desktop/home-screen web app, then
+requesting a magic link from *inside* that installed window, reliably left
+the installed app itself signed out. Tapping the emailed link opened a
+plain browser tab (mail clients open links in the default browser, not in
+an installed web app), and that tab *did* sign in successfully -- but the
+PKCE `code_verifier` needed to complete `/api/auth/callback`'s
+`exchangeCodeForSession()` only ever existed as a cookie in the installed
+window's own browsing context (set while it handled the
+`/api/auth/magic-link` POST), not in the tab that ultimately redeemed the
+code. Same root cause as the `code_verifier` mismatch called out in the
+typo story below, just triggered by an installed-app/browser-tab split
+instead of a typo or a different device.
+
+Fixed by having `/api/auth/magic-link` (`apps/web/worker/index.ts`) set
+`emailRedirectTo` to `/api/auth/verify` instead of `/api/auth/callback`, and
+`supabase/templates/magic_link.html` build its link from `{{ .TokenHash }}`
++ `{{ .RedirectTo }}` instead of `{{ .ConfirmationURL }}`. `/api/auth/verify`
+redeems the token via `verifyOtp()`, which needs nothing beyond the
+token_hash in the URL, so it completes in whichever browsing context opens
+it -- installed app, browser tab, another device, doesn't matter.
+`scripts/demo-login.mjs`'s admin-generated links already worked this way;
+this brings the real emailed magic link in line with it. `/api/auth/callback`
+is kept only so an already-sent, not-yet-clicked email from before this
+change still completes.
+
+**This requires two manual, one-time Dashboard changes** that this repo
+cannot push itself (see the `config push` trap above):
+
+1. **Authentication → Email Templates → Magic Link**: paste in the updated
+   `supabase/templates/magic_link.html` content (subject stays the same).
+2. **Authentication → URL Configuration → Redirect URLs**: add
+   `${APP_ORIGIN}/api/auth/verify` (matching the existing
+   `${APP_ORIGIN}/api/auth/callback` entry's exact form) -- GoTrue validates
+   `emailRedirectTo` against this allow-list before honoring it, silently
+   falling back to the Site URL otherwise (exactly the failure mode in the
+   typo story below), so a real emailed magic link will not reach this
+   Worker at all until this entry exists. The existing `/api/auth/callback`
+   entry can stay for the already-sent-email compatibility window above.
+
 ### A one-character typo in the Redirect URL allow-list breaks sign-in silently
 
 Found 2026-09-09, the day after the `john-ahlinder` → `upgradr` subdomain
