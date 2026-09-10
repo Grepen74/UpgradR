@@ -72,9 +72,14 @@ const moreItems: { id: MoreSubTab; label: string; description: string }[] = [
 
 type ProfileMenuTab = "profile" | "imports" | "account";
 
+// "imports" (the Profile imports tab: bulk LinkedIn CSV / resume-text
+// import) is deliberately hidden from navigation for now -- manual entry and
+// "Populate from PDF" on Relevant experience already cover what an agent
+// needs (see get_candidate_profile's own docs, which treat relevantExperience
+// as the primary evidence source). The route, component, and backend are left
+// in place; add the entry back below to re-expose it.
 const profileMenuItems: { id: ProfileMenuTab; label: string }[] = [
   { id: "profile", label: "Profile" },
-  { id: "imports", label: "Profile imports" },
   { id: "account", label: "Account" },
 ];
 

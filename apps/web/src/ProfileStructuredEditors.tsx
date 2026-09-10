@@ -102,7 +102,7 @@ export function ExperienceEditor({
       <p className="eyebrow">Experience</p>
       {entries.length === 0 ? (
         <p className="detail-empty">
-          No roles yet. Add them here, or import a resume under Profile imports.
+          No roles yet. Add them here, or use "Populate from PDF" on Relevant experience above.
         </p>
       ) : (
         <ul className="entity-list">
