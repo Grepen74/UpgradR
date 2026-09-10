@@ -161,43 +161,16 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "What you're looking for" })).toBeVisible();
     });
     expect(screen.queryByRole("menuitem", { name: "Preferences" })).toBeNull();
+    // Profile imports is hidden from navigation for now (see App.tsx), though
+    // the route and component still exist -- this guards against it silently
+    // reappearing.
+    expect(screen.queryByRole("menuitem", { name: "Profile imports" })).toBeNull();
   });
 
-  it("lets a signed-in user open the profile menu and switch to profile imports", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : (input as Request).url;
+  // Profile imports is hidden from navigation for now (see App.tsx and
+  // getting-started.md); this test previously clicked through to it, but
+  // that menu item no longer exists, so there is nothing left to switch to.
 
-      if (url.includes("/api/session")) {
-        return jsonResponse({ user: { id: "user-1", email: "person@example.com" } });
-      }
-      if (url.includes("/api/dashboard")) {
-        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
-      }
-      if (url.includes("/api/applications")) {
-        return jsonResponse({ applications: [] });
-      }
-      if (url.includes("/api/profile/imports")) {
-        return jsonResponse({ imports: [] });
-      }
-      throw new Error(`Unexpected request to ${url}`);
-    });
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /account settings menu/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Profile imports" }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/no imports yet/i)).toBeVisible();
-    });
-    expect(
-      screen.getByText(/upload a linkedin export or resume above to start a reviewable import/i),
-    ).toBeVisible();
-  });
 
   it("opens Account from the profile menu instead of the top-level nav", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
