@@ -1831,6 +1831,16 @@ input[type="radio"] {
   font-size: 0.82rem;
 }
 
+/* The direct grid item inside `.kanban-column-cards` (see KanbanBoard.tsx) --
+   wraps the drop indicator plus the card itself under one React key. Grid
+   items default to a content-based automatic minimum width, so a long
+   unbreakable word anywhere on the card (e.g. a source name next to the
+   match score) could otherwise stop this slot from shrinking to fit the
+   column, pushing the card out past the column's edge instead of wrapping. */
+.kanban-card-slot {
+  min-width: 0;
+}
+
 .kanban-card {
   display: grid;
   gap: 8px;
@@ -1873,6 +1883,10 @@ input[type="radio"] {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  /* This button is itself a grid item of the `minmax(0, 1fr)` title column
+     above; without overriding its own automatic minimum, its content (the
+     title/location text) would still stop that column from shrinking. */
+  min-width: 0;
 }
 
 .kanban-card-open strong {
@@ -2371,7 +2385,12 @@ input[type="radio"] {
    the grip stays pinned to the card's trailing edge at every column width. */
 .kanban-card-top {
   display: grid;
-  grid-template-columns: 1fr auto;
+  /* `minmax(0, 1fr)` rather than a bare `1fr`: an auto-sized grid track's
+     floor is still its content's automatic minimum width, so a long
+     unbreakable word in the title could otherwise widen this column (and the
+     card with it) instead of wrapping, the same failure mode `.kanban-card-slot`
+     guards against. */
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
 }
