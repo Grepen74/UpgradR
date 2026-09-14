@@ -366,7 +366,7 @@ export function KanbanBoard({
                     <p className="kanban-column-empty">No opportunities here.</p>
                   ) : (
                     stageApplications.map((application, index) => (
-                      <div key={application.id}>
+                      <div key={application.id} className="kanban-card-slot">
                         {dropIndex === index ? <DropIndicator /> : null}
                         <OpportunityCard
                           application={application}
