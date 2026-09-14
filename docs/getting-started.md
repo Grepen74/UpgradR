@@ -20,7 +20,8 @@ that goes job-hunting for you in the background.
 
 ## Step 2 — Fill in your Profile
 
-Once signed in, open the profile menu (top of the app) and go to **Profile**.
+Once signed in, open the profile menu (profile icon, below Sign out button) 
+and go to **Profile**.
 This page has two halves, and an agent only searches well once both are
 filled in:
 
