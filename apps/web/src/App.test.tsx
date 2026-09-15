@@ -184,6 +184,67 @@ describe("App", () => {
     expect(screen.getByLabelText(/6-digit code/i)).toHaveValue("");
   });
 
+  it("signing out clears the stale code field instead of leaving it prefilled for the next sign-in", async () => {
+    let signedIn = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/auth/magic-link")) {
+        return jsonResponse({ sent: true });
+      }
+      if (url.includes("/api/auth/verify-otp")) {
+        signedIn = true;
+        return jsonResponse({ verified: true });
+      }
+      if (url.includes("/api/auth/sign-out")) {
+        signedIn = false;
+        return jsonResponse({ signedOut: true });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "person@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/6-digit code/i)).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /verify code/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+    // The code that was just verified belongs to a fully-consumed secret --
+    // it must not resurface prefilled (it could only ever fail again), and
+    // the code field itself must not even be shown until a fresh send.
+    expect(screen.queryByLabelText(/6-digit code/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/check your inbox/i)).not.toBeInTheDocument();
+  });
+
   it("re-checks the session when the tab becomes visible again", async () => {
     // Reproduces a tab left open signed out while the user signs in from a
     // different tab: no network request happens on its own until something
