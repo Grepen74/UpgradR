@@ -37,6 +37,14 @@
   (e.g. Safe Links) can consume it before a human clicks it -- see the
   /api/auth/verify comment in apps/web/worker/index.ts; the OTP code is a
   same-secret alternative delivery mechanism, not a fix for that.
+
+  The body text below uses &mdash; (an HTML entity) rather than a literal
+  em dash character: Supabase's mail pipeline doesn't reliably declare a
+  charset for this template, so a literal UTF-8 em dash can render as
+  mojibake ("â€"") in some clients (observed in Safari). The entity is
+  plain ASCII in the template's own bytes, so it's immune to that -- keep
+  using it (or another ASCII-safe entity) for any non-ASCII punctuation
+  added here in the future, rather than typing the character directly.
 -->
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #1a1a1a;">
   <!--
@@ -75,11 +83,11 @@
   </p>
   <p style="font-size: 13px; color: #666; line-height: 1.5;">
     Using the button or the code counts as the same sign-in, so only use
-    whichever one you actually need — using one makes the other stop
+    whichever one you actually need &mdash; using one makes the other stop
     working.
   </p>
   <p style="font-size: 13px; color: #666; line-height: 1.5;">
-    If you didn't request this, you can safely ignore this email — no
+    If you didn't request this, you can safely ignore this email &mdash; no
     account changes will be made.
   </p>
 </div>
