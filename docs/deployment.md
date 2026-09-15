@@ -377,6 +377,52 @@ Required values:
 
 The service-role key is not required by ordinary web requests or MCP tools. The only Worker route that uses it is `DELETE /api/account` (account deletion, see the "Web Worker" section below) -- keep it out of every other environment/binding.
 
+## Custom domain (`upgradr.app`)
+
+Both Workers are served from `upgradr.app` rather than `*.workers.dev`. The
+domain was registered for the email fix (see "Gmail refuses mail from
+Brevo's shared sending subdomain"); moving the app URLs onto it was a
+follow-on, not the reason for buying it.
+
+| Worker | Hostname |
+| --- | --- |
+| `upgradr-web` | `https://upgradr.app` (apex) |
+| `upgradr-mcp-worker` | `https://mcp.upgradr.app` |
+
+The hostnames are declared in each `wrangler.jsonc` as
+`env.production.routes` with `custom_domain: true`, so Wrangler provisions
+the domain and its TLS certificate on deploy. They are deliberately *not*
+set up by hand in the Cloudflare dashboard -- keeping them in the config
+means the hostname, `APP_ORIGIN`/`MCP_RESOURCE_URL` and
+`MCP_ALLOWED_HOSTNAMES` are reviewed together in one diff.
+
+**These changes are not independently deployable.** The repo, Cloudflare and
+Supabase must move together or sign-in breaks in the gap. Cutover order:
+
+1. Deploy both Workers (`wrangler deploy --env production`), which creates
+   the custom domains. The `workers.dev` hostnames keep working, so nothing
+   is broken yet.
+2. Confirm both new hostnames serve TLS and respond.
+3. Update the Supabase Dashboard's Site URL and **every** Redirect URL
+   entry -- copy-pasted from `apps/web/wrangler.jsonc`, never retyped. See
+   "A one-character typo in the Redirect URL allow-list breaks sign-in
+   silently" above for what happens otherwise.
+4. Sign in end to end against the new hostname before considering it done.
+
+Two things that do not follow automatically:
+
+- **MCP clients must be re-added.** Anyone who ran `copilot mcp add` or
+  `claude mcp add` against a `workers.dev` URL has it pinned in local
+  config. Re-pointing is required, not optional: `MCP_RESOURCE_URL` is the
+  OAuth resource identifier that tokens are minted for, so a client still
+  using the old hostname fails audience validation rather than merely
+  redirecting.
+- **The `workers.dev` hostnames stay live** unless explicitly disabled in
+  the Cloudflare dashboard. That is useful as a fallback during cutover, but
+  leaving them enabled long-term means two origins can serve the app while
+  only one is in Supabase's allow-list -- a confusing failure if anyone
+  bookmarks the old one.
+
 ## Web Worker
 
 Configure:

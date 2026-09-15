@@ -7,8 +7,8 @@ that goes job-hunting for you in the background.
 
 ## Step 1 — Sign in
 
-1. Go to <https://upgradr-web.upgradr.workers.dev> in your browser (desktop
-   or mobile both work).
+1. Go to <https://upgradr.app> in your browser (desktop or mobile both
+   work).
 2. Enter your email address and submit. There's no password — UpgradR emails
    you a one-time sign-in link instead.
 3. Open that email and click the link. You're in.

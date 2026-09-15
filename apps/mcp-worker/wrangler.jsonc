@@ -28,9 +28,14 @@
   "env": {
     "production": {
       "name": "upgradr-mcp-worker",
+      // See the matching note in apps/web/wrangler.jsonc. Must stay
+      // identical to MCP_RESOURCE_URL and MCP_ALLOWED_HOSTNAMES below:
+      // clients validate the token audience against the resource
+      // identifier, so a mismatch fails every request.
+      "routes": [{ "pattern": "mcp.upgradr.app", "custom_domain": true }],
       "vars": {
-        "MCP_RESOURCE_URL": "https://upgradr-mcp-worker.upgradr.workers.dev",
-        "MCP_ALLOWED_HOSTNAMES": "upgradr-mcp-worker.upgradr.workers.dev",
+        "MCP_RESOURCE_URL": "https://mcp.upgradr.app",
+        "MCP_ALLOWED_HOSTNAMES": "mcp.upgradr.app",
         "MCP_REQUIRED_SCOPE": "mcp",
         "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
         "SUPABASE_ANON_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC",

@@ -17,7 +17,7 @@ below.
 3. Click **Add custom connector**.
 4. Give it a name (e.g. `UpgradR`) and paste in this URL:
    ```
-   https://upgradr-mcp-worker.upgradr.workers.dev/mcp
+   https://mcp.upgradr.app/mcp
    ```
 5. Click **Connect**. A browser window/tab opens showing UpgradR's sign-in
    and consent screen — sign in with your UpgradR account (the same one
@@ -58,7 +58,7 @@ Nothing about this flow needs a laptop at any point.
 If you use Claude Code instead of (or alongside) the Claude app:
 
 ```sh
-$ claude mcp add --transport http upgradr https://upgradr-mcp-worker.upgradr.workers.dev/mcp
+$ claude mcp add --transport http upgradr https://mcp.upgradr.app/mcp
 ```
 
 > If your installed version of Claude Code expects slightly different

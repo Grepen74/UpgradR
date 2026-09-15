@@ -45,8 +45,15 @@
   "env": {
     "production": {
       "name": "upgradr-web",
+      // Provisions the custom domain (and its TLS cert) on deploy, so the
+      // hostname is versioned here rather than set by hand in the
+      // Cloudflare dashboard. Must stay identical to APP_ORIGIN below and
+      // to Supabase's Site URL / Redirect URL allow-list -- see
+      // docs/deployment.md, "A one-character typo in the Redirect URL
+      // allow-list breaks sign-in silently".
+      "routes": [{ "pattern": "upgradr.app", "custom_domain": true }],
       "vars": {
-        "APP_ORIGIN": "https://upgradr-web.upgradr.workers.dev",
+        "APP_ORIGIN": "https://upgradr.app",
         "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
         "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC"
       },
