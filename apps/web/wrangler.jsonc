@@ -19,6 +19,19 @@
   "vars": {
     "APP_ORIGIN": "http://localhost:8787"
   },
+  // Throttles POST /api/auth/verify-otp (see worker/index.ts and env.ts's
+  // comment on OTP_VERIFY_RATE_LIMITER for why this exists). "ratelimits"
+  // is not inherited into named environments (see wrangler's own schema
+  // note), so this is repeated under env.production below -- keep both in
+  // sync if the limit ever changes. namespace_id just needs to be a unique
+  // id within this account; it isn't secret.
+  "ratelimits": [
+    {
+      "name": "OTP_VERIFY_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 }
+    }
+  ],
   // Deploy with `wrangler deploy --env production`. `name` is repeated here
   // (unchanged) so Wrangler does not append "-production" to the deployed
   // Worker's name/URL. Every REPLACE_ME below will fail loud (a build/deploy
@@ -36,7 +49,14 @@
         "APP_ORIGIN": "https://upgradr-web.upgradr.workers.dev",
         "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",
         "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC"
-      }
+      },
+      "ratelimits": [
+        {
+          "name": "OTP_VERIFY_RATE_LIMITER",
+          "namespace_id": "1001",
+          "simple": { "limit": 5, "period": 60 }
+        }
+      ]
     }
   }
 }

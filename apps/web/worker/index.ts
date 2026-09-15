@@ -21,13 +21,14 @@ import labelsRoute from "./routes/labels";
 import suppressionsRoute from "./routes/suppressions";
 import notesRoute from "./routes/notes";
 import profileImportsRoute from "./routes/profileImports";
-import { isAllowedOrigin, securityHeaders } from "./security";
+import { hashRateLimitKey, isAllowedOrigin, securityHeaders } from "./security";
 import { createSupabaseServerClient } from "./supabase";
 import {
   magicLinkSchema,
   oauthDecisionSchema,
   oauthRevokeSchema,
   oauthScopeUpdateSchema,
+  otpVerifySchema,
   profileEducationWriteSchema,
   profileExperienceWriteSchema,
   profileSkillWriteSchema,
@@ -165,6 +166,68 @@ app.get("/api/auth/verify", async (context) => {
   const next = context.req.query("next");
   const returnTo = next?.startsWith("/") && !next.startsWith("//") ? next : "/";
   return context.redirect(returnTo);
+});
+
+// Verifies the plain 6-digit code /api/auth/magic-link's email also carries
+// (see magic_link.html's {{ .Token }}), as an alternative to clicking the
+// link above. Both are the same one-time secret Supabase generated for that
+// sign-in request -- whichever is redeemed first invalidates the other --
+// so this exists purely to let the code be read on one device (wherever the
+// mail is convenient to open) and entered on a different one, which clicking
+// a link can never do: the link's session always lands on whichever browser
+// followed the URL.
+//
+// Unlike the link's long, unguessable token_hash, a 6-digit code is
+// brute-forceable within its lifetime, and Supabase's own token_verifications
+// rate limit is keyed on this Worker's own egress IP (it calls Supabase
+// server-side, not the browser directly), not the real caller -- so it can't
+// be relied on alone as a per-attempt cap. OTP_VERIFY_RATE_LIMITER throttles
+// on a hash of the normalized email instead of raw IP, ahead of ever calling
+// Supabase. It's optional so local dev without the binding configured just
+// skips throttling rather than hard-failing every request.
+app.post("/api/auth/verify-otp", async (context) => {
+  const parsed = otpVerifySchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) {
+    return context.json({ error: "Enter the 6-digit code" }, 400);
+  }
+
+  const normalizedEmail = parsed.data.email.toLowerCase();
+  if (context.env.OTP_VERIFY_RATE_LIMITER) {
+    const key = await hashRateLimitKey(normalizedEmail);
+    const { success } = await context.env.OTP_VERIFY_RATE_LIMITER.limit({ key });
+    if (!success) {
+      return context.json({ error: "Too many attempts. Request a new code and try again." }, 429);
+    }
+  }
+
+  const supabase = createSupabaseServerClient(context);
+  const { error } = await supabase.auth.verifyOtp({
+    email: normalizedEmail,
+    token: parsed.data.token,
+    type: "email",
+  });
+  if (error) {
+    console.error("Auth verify-otp: verifyOtp failed", {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+    });
+    // GoTrue's own 4xx (wrong/expired/already-used code) is the expected,
+    // routine failure mode here -- including whenever the paired magic link
+    // was redeemed first, see the comment above -- and must not leak beyond
+    // a generic message (doing so risks confirming whether the email has an
+    // account). Anything else (network blip, GoTrue outage, an upstream
+    // 5xx/429 slipping through) is unexpected and gets its own generic
+    // message instead of masquerading as an invalid code, so the client can
+    // tell "try a fresh code" apart from "try again shortly".
+    const status = error.status ?? 0;
+    if (status >= 400 && status < 500) {
+      return context.json({ error: "That code is invalid or has expired." }, 400);
+    }
+    return context.json({ error: "Unable to verify that code right now." }, 502);
+  }
+
+  return context.json({ verified: true });
 });
 
 app.post("/api/auth/sign-out", async (context) => {

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
+const verifyOtp = vi.fn().mockResolvedValue({ error: null });
 vi.mock("./supabase", () => ({
-  createSupabaseServerClient: () => ({ auth: { signInWithOtp } }),
+  createSupabaseServerClient: () => ({ auth: { signInWithOtp, verifyOtp } }),
 }));
 
 import app from "./index";
@@ -80,5 +81,91 @@ describe("POST /api/auth/magic-link", () => {
         emailRedirectTo: "https://upgradr.example/api/auth/verify?next=%2Fopportunities%2F42",
       },
     });
+  });
+});
+
+describe("POST /api/auth/verify-otp", () => {
+  function postOtp(body: unknown, env: WebEnv) {
+    return app.request(
+      "/api/auth/verify-otp",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://upgradr.example" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+  }
+
+  it("rejects a malformed body before calling Supabase", async () => {
+    verifyOtp.mockClear();
+    const res = await postOtp({ email: "person@example.com", token: "12" }, makeEnv());
+
+    expect(res.status).toBe(400);
+    expect(verifyOtp).not.toHaveBeenCalled();
+  });
+
+  // Verifying via the code is the same one-time secret as the emailed link
+  // (see the comment on this route in ./index.ts), just via
+  // { email, token, type: "email" } instead of { token_hash, type:
+  // "magiclink" } -- confirmed against Supabase's own docs for the
+  // user-entered-OTP call shape.
+  it("normalizes email casing and verifies via email + token", async () => {
+    verifyOtp.mockClear();
+    verifyOtp.mockResolvedValueOnce({ error: null });
+    const res = await postOtp({ email: "Person@Example.com", token: "123456" }, makeEnv());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ verified: true });
+    expect(verifyOtp).toHaveBeenCalledWith({
+      email: "person@example.com",
+      token: "123456",
+      type: "email",
+    });
+  });
+
+  it("reports an invalid/expired code as a generic 400, never leaking GoTrue's error text", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    verifyOtp.mockClear();
+    verifyOtp.mockResolvedValueOnce({
+      error: { status: 403, code: "otp_expired", message: "Token has expired or is invalid" },
+    });
+    const res = await postOtp({ email: "person@example.com", token: "123456" }, makeEnv());
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "That code is invalid or has expired." });
+  });
+
+  it("reports an unexpected upstream failure as a generic 502", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    verifyOtp.mockClear();
+    verifyOtp.mockResolvedValueOnce({
+      error: { status: 500, code: "unexpected_failure", message: "boom" },
+    });
+    const res = await postOtp({ email: "person@example.com", token: "123456" }, makeEnv());
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Unable to verify that code right now." });
+  });
+
+  it("throttles repeated attempts via OTP_VERIFY_RATE_LIMITER before calling Supabase", async () => {
+    verifyOtp.mockClear();
+    const limit = vi.fn().mockResolvedValue({ success: false });
+    const res = await postOtp(
+      { email: "person@example.com", token: "123456" },
+      makeEnv({ OTP_VERIFY_RATE_LIMITER: { limit } as unknown as RateLimit }),
+    );
+
+    expect(res.status).toBe(429);
+    expect(verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it("skips throttling when OTP_VERIFY_RATE_LIMITER is not configured (e.g. local dev)", async () => {
+    verifyOtp.mockClear();
+    verifyOtp.mockResolvedValueOnce({ error: null });
+    const res = await postOtp({ email: "person@example.com", token: "123456" }, makeEnv());
+
+    expect(res.status).toBe(200);
+    expect(verifyOtp).toHaveBeenCalled();
   });
 });

@@ -24,6 +24,164 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: /turn scattered opportunities/i })).toBeVisible();
     });
     expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    expect(screen.queryByLabelText(/6-digit code/i)).not.toBeInTheDocument();
+  });
+
+  it("reveals the code field only after a magic link is successfully sent, then verifies the frozen send-time email even if the field is edited afterward", async () => {
+    let signedIn = false;
+    const verifyOtpRequests: RequestInit[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/auth/magic-link")) {
+        return jsonResponse({ sent: true });
+      }
+      if (url.includes("/api/auth/verify-otp")) {
+        verifyOtpRequests.push(init ?? {});
+        signedIn = true;
+        return jsonResponse({ verified: true });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+    expect(screen.queryByLabelText(/6-digit code/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "person@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/6-digit code/i)).toBeVisible();
+    });
+    expect(screen.getByText(/sent to person@example\.com/i)).toBeVisible();
+
+    // Editing the email field afterward must not change which address the
+    // code is verified against -- it stays frozen at send time.
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "someone-else@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /verify code/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+    expect(verifyOtpRequests).toHaveLength(1);
+    expect(JSON.parse(String(verifyOtpRequests[0]?.body))).toEqual({
+      email: "person@example.com",
+      token: "123456",
+    });
+  });
+
+  it("shows an inline error and allows retrying after an invalid code, without touching the send-link message", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: null });
+      }
+      if (url.includes("/api/auth/magic-link")) {
+        return jsonResponse({ sent: true });
+      }
+      if (url.includes("/api/auth/verify-otp")) {
+        return new Response(JSON.stringify({ error: "That code is invalid or has expired." }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "person@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/6-digit code/i)).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: "000000" } });
+    fireEvent.click(screen.getByRole("button", { name: /verify code/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/that code is invalid or has expired/i)).toBeVisible();
+    });
+    // The "check your inbox" confirmation from sending is unrelated to the
+    // code form's own error and must still be visible.
+    expect(screen.getByText(/check your inbox/i)).toBeVisible();
+    // The code field remains editable for a retry rather than being cleared
+    // or disabled.
+    expect(screen.getByLabelText(/6-digit code/i)).toBeVisible();
+  });
+
+  it("resending a link clears a stale code and its error", async () => {
+    let magicLinkCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({ user: null });
+      }
+      if (url.includes("/api/auth/magic-link")) {
+        magicLinkCalls += 1;
+        return jsonResponse({ sent: true });
+      }
+      if (url.includes("/api/auth/verify-otp")) {
+        return new Response(JSON.stringify({ error: "That code is invalid or has expired." }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "person@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/6-digit code/i)).toBeVisible();
+    });
+
+    fireEvent.change(screen.getByLabelText(/6-digit code/i), { target: { value: "000000" } });
+    fireEvent.click(screen.getByRole("button", { name: /verify code/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/that code is invalid or has expired/i)).toBeVisible();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+    await waitFor(() => {
+      expect(magicLinkCalls).toBe(2);
+    });
+    expect(screen.queryByText(/that code is invalid or has expired/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/6-digit code/i)).toHaveValue("");
   });
 
   it("re-checks the session when the tab becomes visible again", async () => {

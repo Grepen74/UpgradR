@@ -739,6 +739,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, returnTo }),
     }),
+  verifyOtp: (email: string, token: string) =>
+    apiRequest<{ verified: true }>("/api/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, token }),
+    }),
   getOAuthAuthorization: (authorizationId: string) =>
     apiRequest<OAuthAuthorization>(
       `/api/oauth/authorization?authorization_id=${encodeURIComponent(authorizationId)}`,

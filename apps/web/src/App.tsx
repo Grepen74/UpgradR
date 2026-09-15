@@ -99,6 +99,14 @@ export function App() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // The email a sent code/link actually applies to, frozen at send time
+  // rather than read live from `email` -- otherwise editing the email
+  // field after sending (but before entering the code) would verify the
+  // code against a different address than the one it was mailed to.
+  const [pendingOtpEmail, setPendingOtpEmail] = useState<string>();
+  const [otpCode, setOtpCode] = useState("");
+  const [otpMessage, setOtpMessage] = useState<string>();
+  const [otpBusy, setOtpBusy] = useState(false);
 
   const refreshWorkspace = useCallback(async () => {
     const [summary, applicationResult] = await Promise.all([
@@ -174,10 +182,35 @@ export function App() {
         : undefined;
       await api.sendMagicLink(email, returnTo);
       setMessage("Check your inbox for a secure sign-in link.");
+      // A fresh send replaces Supabase's prior link/code outright (it's the
+      // same one-time secret being reissued), so any code the user was
+      // partway through entering for an earlier send is now stale -- reset
+      // the code form around the newly frozen target email rather than
+      // leaving a code on screen that can only fail.
+      setPendingOtpEmail(email.trim());
+      setOtpCode("");
+      setOtpMessage(undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to sign in.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function verifyOtpCode(event: FormEvent) {
+    event.preventDefault();
+    if (!pendingOtpEmail) {
+      return;
+    }
+    setOtpBusy(true);
+    setOtpMessage(undefined);
+    try {
+      await api.verifyOtp(pendingOtpEmail, otpCode);
+      await checkSession();
+    } catch (error) {
+      setOtpMessage(error instanceof Error ? error.message : "Unable to verify that code.");
+    } finally {
+      setOtpBusy(false);
     }
   }
 
@@ -248,24 +281,59 @@ export function App() {
               </div>
             </div>
 
-            <form className="sign-in-card" onSubmit={(event) => void requestMagicLink(event)}>
-              <p className="eyebrow">Start securely</p>
-              <h2>{isConsentRoute ? "Sign in to authorize your agent" : "Sign in with email"}</h2>
-              <label htmlFor="email">Email address</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-              <button className="button primary" disabled={busy}>
-                {busy ? "Sending..." : "Send magic link"}
-              </button>
-              {message ? <StatusMessage>{message}</StatusMessage> : null}
-            </form>
+            <div className="sign-in-column">
+              <form className="sign-in-card" onSubmit={(event) => void requestMagicLink(event)}>
+                <p className="eyebrow">Start securely</p>
+                <h2>{isConsentRoute ? "Sign in to authorize your agent" : "Sign in with email"}</h2>
+                <label htmlFor="email">Email address</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+                <button className="button primary" disabled={busy}>
+                  {busy ? "Sending..." : "Send magic link"}
+                </button>
+                {message ? <StatusMessage>{message}</StatusMessage> : null}
+              </form>
+
+              {pendingOtpEmail ? (
+                <form
+                  className="sign-in-card otp-card"
+                  onSubmit={(event) => void verifyOtpCode(event)}
+                >
+                  <p className="eyebrow">Signing in on a different device?</p>
+                  <h2>Enter the 6-digit code from the email</h2>
+                  <p className="lede">
+                    Sent to {pendingOtpEmail}. Using this code or the link above both complete the
+                    same sign-in -- whichever you use first is the one that counts.
+                  </p>
+                  <label htmlFor="otp-code">6-digit code</label>
+                  <input
+                    id="otp-code"
+                    name="otp-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    required
+                    value={otpCode}
+                    onChange={(event) =>
+                      setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                  />
+                  <button className="button primary" disabled={otpBusy || otpCode.length !== 6}>
+                    {otpBusy ? "Verifying..." : "Verify code"}
+                  </button>
+                  {otpMessage ? <StatusMessage>{otpMessage}</StatusMessage> : null}
+                </form>
+              ) : null}
+            </div>
           </section>
         )}
       </main>

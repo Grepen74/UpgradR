@@ -43,6 +43,15 @@ export const magicLinkSchema = z.object({
     .optional(),
 });
 
+// The plain 6-digit code Supabase emails alongside the magic link itself
+// (see /api/auth/verify-otp in ./index.ts) -- both are the same one-time
+// secret, just two representations of it, so this only needs to accept
+// exactly what auth.email.otp_length in supabase/config.toml produces.
+export const otpVerifySchema = z.object({
+  email: z.email().max(320),
+  token: z.string().regex(/^[0-9]{6}$/),
+});
+
 export const statusTransitionSchema = z.object({
   status: applicationStatusSchema,
   note: z.string().trim().max(2_000).optional(),

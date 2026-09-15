@@ -20,6 +20,7 @@ import {
   oauthDecisionSchema,
   oauthRevokeSchema,
   oauthScopeUpdateSchema,
+  otpVerifySchema,
   profileImportConfirmSchema,
   profileUpdateSchema,
   boardMoveSchema,
@@ -57,6 +58,33 @@ describe("magicLinkSchema", () => {
         returnTo: "https://evil.example",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("otpVerifySchema", () => {
+  it("accepts a 6-digit numeric code", () => {
+    expect(
+      otpVerifySchema.safeParse({ email: "person@example.com", token: "123456" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a code that is too short or too long", () => {
+    expect(otpVerifySchema.safeParse({ email: "person@example.com", token: "12345" }).success).toBe(
+      false,
+    );
+    expect(
+      otpVerifySchema.safeParse({ email: "person@example.com", token: "1234567" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a non-numeric code", () => {
+    expect(
+      otpVerifySchema.safeParse({ email: "person@example.com", token: "12a456" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a missing email", () => {
+    expect(otpVerifySchema.safeParse({ token: "123456" }).success).toBe(false);
   });
 });
 
