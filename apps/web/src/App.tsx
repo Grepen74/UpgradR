@@ -221,6 +221,7 @@ export function App() {
       setUser(null);
       setDashboard(emptyDashboard);
       setApplications([]);
+      resetSignInForm();
     } finally {
       setBusy(false);
     }
@@ -234,6 +235,19 @@ export function App() {
     setUser(null);
     setDashboard(emptyDashboard);
     setApplications([]);
+    resetSignInForm();
+  }
+
+  // Whatever code/message was on screen belonged to the session that just
+  // ended -- the underlying Magic Link secret is already fully consumed by
+  // now (that's how the user got signed in), so leaving it populated would
+  // only ever surface a stale "invalid or expired" error on next use, not a
+  // way to skip sign-in again. Clear it so the next sign-in starts fresh.
+  function resetSignInForm() {
+    setPendingOtpEmail(undefined);
+    setOtpCode("");
+    setOtpMessage(undefined);
+    setMessage(undefined);
   }
 
   if (user === undefined) {
