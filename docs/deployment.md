@@ -396,20 +396,36 @@ set up by hand in the Cloudflare dashboard -- keeping them in the config
 means the hostname, `APP_ORIGIN`/`MCP_RESOURCE_URL` and
 `MCP_ALLOWED_HOSTNAMES` are reviewed together in one diff.
 
-**These changes are not independently deployable.** The repo, Cloudflare and
-Supabase must move together or sign-in breaks in the gap. Cutover order:
+**These changes are not independently deployable, and there is no gradual
+cutover.** Adding `routes` to a Worker makes Wrangler default `workers_dev`
+to `false`, so the moment the deploy in step 1 lands, the old
+`*.workers.dev` hostnames stop serving and return `404`. Sign-in is
+therefore **fully broken between steps 1 and 3** -- the old origin is gone
+and the new one is not yet in Supabase's allow-list. Verified 2026-09-15:
+both `upgradr-web.upgradr.workers.dev` and
+`upgradr-mcp-worker.upgradr.workers.dev` began returning `404` immediately
+after the first deploy carrying the `routes` change.
+
+Do steps 1-3 back to back, and prefer a quiet moment. Cutover order:
 
 1. Deploy both Workers (`wrangler deploy --env production`), which creates
-   the custom domains. The `workers.dev` hostnames keep working, so nothing
-   is broken yet.
+   the custom domains and their TLS certificates -- and simultaneously
+   retires the `workers.dev` hostnames.
 2. Confirm both new hostnames serve TLS and respond.
 3. Update the Supabase Dashboard's Site URL and **every** Redirect URL
    entry -- copy-pasted from `apps/web/wrangler.jsonc`, never retyped. See
    "A one-character typo in the Redirect URL allow-list breaks sign-in
-   silently" above for what happens otherwise.
-4. Sign in end to end against the new hostname before considering it done.
+   silently" above for what happens otherwise. Add the new entries
+   *alongside* the old ones rather than editing in place; the allow-list
+   tolerates stale entries, and removing them can wait until step 4 passes.
+4. Sign in end to end against the new hostname before considering it done,
+   then delete the superseded `workers.dev` entries.
 
-Two things that do not follow automatically:
+If a rollback is needed mid-cutover, it is a redeploy, not a DNS change:
+set `"workers_dev": true` alongside `routes` (or drop `routes`) and deploy
+again.
+
+One thing that does not follow automatically:
 
 - **MCP clients must be re-added.** Anyone who ran `copilot mcp add` or
   `claude mcp add` against a `workers.dev` URL has it pinned in local
@@ -417,11 +433,6 @@ Two things that do not follow automatically:
   OAuth resource identifier that tokens are minted for, so a client still
   using the old hostname fails audience validation rather than merely
   redirecting.
-- **The `workers.dev` hostnames stay live** unless explicitly disabled in
-  the Cloudflare dashboard. That is useful as a fallback during cutover, but
-  leaving them enabled long-term means two origins can serve the app while
-  only one is in Supabase's allow-list -- a confusing failure if anyone
-  bookmarks the old one.
 
 ## Web Worker
 

@@ -79,12 +79,15 @@ now; you'll come back to it in Step 4.
 ## Step 3 — Add the skill
 
 1. Unzip the `upgradr-mcp-skill.zip` file you downloaded (or were given) in
-   the previous section. You should end up with two files: `SKILL.md` and
-   `mcp.mjs` in an `upgradr-mcp` folder.
-2. Then move (or drag, in Finder) the full unzipped folder into the 
-   `.copilot/skills` folder inside your home folder (typically at `~/.copilot/skills)`. 
-   (In Finder, press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal
-   hidden folders like `.copilot` if you don't see it.)
+   the previous section. Double-clicking it gives you a folder named
+   `upgradr-mcp`.
+2. Drag that whole folder into the `.copilot/skills` folder inside your home
+   folder (typically `~/.copilot/skills`). In Finder, press
+   <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal hidden folders
+   like `.copilot` if you don't see it.
+
+   *Already have an `upgradr-mcp` folder there from a previous install?*
+   Replace it — macOS will ask; choose **Replace**.
 
 You should now have:
 ```

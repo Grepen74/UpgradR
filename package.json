@@ -16,6 +16,7 @@
     "dev:mcp": "npm run dev --workspace @upgradr/mcp-worker",
     "mcp:login": "node scripts/mcp-agent-login.mjs",
     "mcp:tools-doc": "node scripts/generate-mcp-tools-doc.mjs",
+    "build:skill-zip": "node scripts/build-skill-zip.mjs",
     "check:deployment": "node scripts/check-deployment.mjs",
     "check:mcp-local": "node scripts/mcp-local-e2e.mjs",
     "demo:reset": "node scripts/demo-reset.mjs",
@@ -26,4 +27,3 @@
     "node": ">=22"
   }
 }
-
