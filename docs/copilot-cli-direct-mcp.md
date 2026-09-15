@@ -27,7 +27,7 @@ $ copilot
 Still in your terminal:
 
 ```sh
-$ copilot mcp add --transport http upgradr https://upgradr-mcp-worker.upgradr.workers.dev/mcp
+$ copilot mcp add --transport http upgradr https://mcp.upgradr.app/mcp
 ```
 
 Check it's there:

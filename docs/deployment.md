@@ -72,22 +72,27 @@ below for why. `config.toml`'s `[auth.email.smtp]` section exists purely as
 a documentation-accurate mirror of what is set in the Dashboard, so anyone
 reading the repo can see the shape of the config without needing dashboard
 access. **Brevo** is the recommended provider for this project: 300
-emails/day free, and does not require owning a domain (a single verified
-sender address is enough, via Brevo's own confirmation-email flow) --
+emails/day free. Brevo will *set up* without owning a domain (a single
+verified sender address is enough, via its own confirmation-email flow),
 unlike Resend, whose free tier requires a verified domain before it will
-deliver to anyone other than the account owner.
+deliver to anyone other than the account owner. **Do not take that as
+licence to skip the domain**, though -- see "Gmail refuses mail from Brevo's
+shared sending subdomain" below; a sender-only setup delivers to some
+providers and is silently refused by Gmail.
 
-**Known tradeoff, accepted for now**: the verified sender is a personal
+**Known tradeoff -- SUPERSEDED 2026-09-15, see "Gmail refuses mail from
+Brevo's shared sending subdomain" below.** The verified sender is a personal
 address on a domain not owned by this project (no domain is owned), which
 trips Google/Yahoo/Microsoft's DKIM/DMARC bulk-sender compliance warning in
 Brevo. This is structural, not a one-time glitch -- you cannot add DNS
 records (SPF/DKIM/DMARC) for a domain like `gmail.com` that you don't
 control, so any personal-email sender routed through a third-party ESP
-will always trip this. Decided to proceed accepting the occasional
-spam-folder risk rather than buy a domain solely to fix it. Revisit if
-deliverability turns out to be poor in practice -- buying a domain
-(~$10-15/yr) would resolve this permanently and would also let the
-`workers.dev` URLs move to something less generic as a bonus.
+will always trip this. It was originally decided to proceed, accepting the
+occasional spam-folder risk rather than buy a domain solely to fix it, with
+a note to "revisit if deliverability turns out to be poor in practice".
+Deliverability did turn out to be poor in practice: Gmail stopped accepting
+these messages entirely. The next section records that investigation and its
+conclusion -- a domain is now required, not optional.
 
 The email template sent (subject and body) is likewise configured directly
 via the Dashboard (Authentication → Email Templates → Magic Link), mirrored
@@ -95,6 +100,176 @@ into `[auth.email.template.magic_link]` pointing at `supabase/templates/
 magic_link.html` for the same documentation reason -- Supabase's stock
 template does not mention the product name at all, only "Supabase", until a
 project overrides it.
+
+### Gmail refuses mail from Brevo's shared sending subdomain
+
+Found 2026-09-15, shortly after the OTP sign-in code shipped. **Symptom:**
+Brevo's log showed magic-link mails as `Sent` but never `Delivered` to a
+Gmail recipient, for roughly every send. Clicking Brevo's "Resend email"
+delivered immediately. No `Deferred`, `Blocked`, or bounce event was ever
+recorded, so Brevo's UI never exposed the remote server's actual SMTP reply.
+
+**Root cause: Gmail will not extend trust to the From domain.** Brevo's free
+tier sends from a shared subdomain of `brevosend.com` (e.g.
+`john.ahlinder@12082885.brevosend.com`), whose DNS is:
+
+| Check | Result |
+| --- | --- |
+| SPF on `brevosend.com` | OK -- `v=spf1 include:spf.sendinblue.com -all` |
+| SPF on the `<id>.brevosend.com` From domain | **missing** -- TXT returns a DKIM key, not SPF |
+| DMARC at `_dmarc.<id>.brevosend.com` | **invalid** -- a wildcard TXT shadows the label, returning that same DKIM key |
+| DMARC fallback at `_dmarc.brevosend.com` | `v=DMARC1; p=reject; sp=reject` |
+
+So the From domain inherits `sp=reject` while publishing no SPF of its own
+and having its `_dmarc` label shadowed, leaving delivery resting entirely on
+DKIM alignment -- on a subdomain whose reputation is shared with every other
+free-tier Brevo customer. Since Gmail's 2024 bulk-sender rules it effectively
+requires SPF + DKIM + DMARC aligned to a domain the sender controls, and it
+is markedly stricter than other providers about this.
+
+**Confirmed Gmail-specific:** the identical message, same sender and relay,
+was accepted by a Microsoft `live.com` address instantly. The Worker,
+Supabase/GoTrue, and Brevo are all functioning correctly.
+
+**Do not waste time re-testing these -- all ruled out during the
+investigation:**
+
+- *The application.* `/api/auth/magic-link` calls `signInWithOtp` exactly
+  once per request, and `[auth.email.smtp]` was untouched by the OTP change.
+- *Hidden text from the template's dev comments.* GoTrue renders templates
+  with Go's `html/template`, which **elides HTML comments** (see
+  `src/html/template/escape.go`); recipients only receive the visible markup,
+  so the large explanatory comment block in `magic_link.html` never ships.
+- *A Gmail outage.* Google's Workspace status feed showed no Gmail incident.
+- *The OTP email content.* This was believed to be the cause for a while,
+  because reverting the Dashboard template to its pre-OTP version restored
+  delivery once. That was a single observation against a probabilistic
+  failure, and it was falsified twice over: the pre-OTP template later began
+  failing too, and Outlook accepted the OTP version unchanged. Beware
+  concluding anything about deliverability from one send.
+
+**Fix, applied 2026-09-15:** registered `upgradr.app` through Cloudflare
+Registrar and authenticated it in Brevo. Gmail delivery recovered
+immediately. Switching ESP would not have been an alternative -- Resend,
+Amazon SES, Postmark and Mailgun all require a verified sending domain for
+reliable Gmail delivery, so a domain was the prerequisite regardless of
+provider.
+
+The resulting zone is exactly four records, all **DNS only** (grey cloud --
+a proxied TXT/CNAME breaks verification, and Cloudflare cannot proxy TXT at
+all):
+
+| Type | Name | Purpose |
+| --- | --- | --- |
+| TXT | `upgradr.app` | `brevo-code:...` ownership proof |
+| TXT | `_dmarc` | `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` |
+| CNAME | `brevo1._domainkey` | DKIM key 1 |
+| CNAME | `brevo2._domainkey` | DKIM key 2 |
+
+Brevo's sender is `no-reply@upgradr.app`. **Domain authentication, not
+single-sender verification** -- the former needs no mailbox to exist, so no
+email hosting is required for a `no-reply@` address. The Supabase
+Dashboard's SMTP **Sender email** points at it (Project Settings →
+Authentication → SMTP Settings); host, login and key were unchanged.
+
+Notes for anyone repeating this:
+
+- The DMARC `rua` must stay pointed at Brevo. Sending aggregate reports to a
+  mailbox on another domain (a personal `gmail.com` address, say) requires
+  that domain to publish an authorising `upgradr.app._report._dmarc` record,
+  which is impossible for `gmail.com`.
+- `p=none` is monitor-only and is the correct starting point. Tighten to
+  `quarantine`/`reject` only once reports look clean.
+- Google Postmaster Tools can be pointed at the domain to watch reputation.
+
+### Do not enable Brevo's branded subdomain
+
+Found 2026-09-15 immediately after the fix above, by enabling it. Brevo
+offers a "branded subdomain" during domain setup that rewrites click- and
+image-tracking URLs onto your own domain (`send.upgradr.app` rather than
+`brevolinks.com`), and genuinely does add SPF alignment on top of DKIM. It
+was enabled for that reason, and **broke every magic link in the product.**
+
+Brevo creates the DNS records for it but **never provisions a TLS
+certificate** for the branded redirect host. The host it points at serves
+whatever certificate it has:
+
+```
+$ openssl s_client -connect r.send.upgradr.app:443 -servername r.send.upgradr.app
+subject=CN=r.mailin.fr
+issuer=Let's Encrypt R3
+notBefore=Jan 19 2024 / notAfter=Apr 18 2024     <- expired ~17 months
+Verify return code: 10 (certificate has expired)
+```
+
+Wrong hostname *and* long expired. Every magic link therefore landed on a
+browser interstitial instead of the sign-in route. **This is unrecoverable
+on `.app`**, which is on the HSTS preload list: browsers refuse to offer a
+click-through bypass for a bad certificate, so there is no degraded mode --
+the link is simply dead. On an ordinary TLD users would at least have seen a
+warning they could ignore.
+
+It is not a propagation delay. The same host, reached under Brevo's own
+`*.r.bh.d.sendibt3.com` name, serves a valid auto-renewing certificate, so
+the infrastructure is healthy; Brevo just does not issue certificates for
+customer branded domains.
+
+**Recovery, if it has already been enabled:** the branded subdomain can only
+be chosen while first adding a domain, so it cannot be turned off in place.
+Delete the domain in Brevo and re-add it, skipping the branded-subdomain
+step (Brevo's own docs note it is only required on a dedicated IP). The
+authentication records survive in Cloudflare and are reused, so the re-added
+domain verifies with no DNS changes -- but Brevo will then propose `r` and
+`img` CNAMEs for tracking at the root; **decline those**, and afterwards
+delete the orphaned `send`, `r.send` and `img.send` records. Note that
+deleting the domain un-verifies its senders, so keep a working fallback
+sender until the re-add is green.
+
+Skipping it costs SPF *alignment* only. DKIM still signs and aligns as
+`d=upgradr.app`, DMARC still passes on that alone, and Gmail's sender
+requirements are still met -- which is the whole point of the exercise.
+
+### Brevo click tracking cannot be disabled, and rewrites magic links
+
+Related to the above and worth knowing before debugging a strange-looking
+sign-in URL. Brevo rewrites links in transactional mail through a tracking
+redirect (`https://<id>.r.bh.d.sendibt3.com/tr/cl/<token>`) and there is no
+way to opt out:
+
+- Settings → Transactional emails → Tracking is **not** an on/off switch. It
+  only offers "Anonymous email tracking?", which controls whether tracking is
+  attributed to a contact, not whether it happens.
+- Brevo has no per-link opt-out attribute. `clicktracking="off"` is a
+  SendGrid/Mailgun feature and is ignored here, so it cannot be worked around
+  from `supabase/templates/magic_link.html`.
+- GoTrue cannot inject custom SMTP headers, so there is no per-message
+  override either.
+
+This is tolerable: Brevo's own tracking domain has a valid, auto-renewing
+certificate. But it does mean the magic link is a redirect through a third
+party, which compounds the pre-existing caveat that email security scanners
+prefetching links can consume the one-time token before the recipient
+clicks. The 6-digit OTP added alongside the magic link is the practical
+mitigation -- a scanner cannot consume a code it never visits.
+
+### Email template changes take up to ~10 minutes to go live
+
+GoTrue fetches Dashboard email templates from a URL and caches them, so a
+template saved in the Dashboard is **not** used by the next send. Defaults,
+from `internal/conf/configuration.go` in `supabase/auth`:
+
+| Setting | Default |
+| --- | --- |
+| `TemplateMaxAge` | `10m` |
+| `TemplateReloadingEnabled` | `false` (refreshed lazily on the first send after expiry) |
+| `TemplateRetryInterval` | `10s` |
+| `TemplateReloadingMaxIdle` | `20m` |
+
+This silently invalidated one deliverability test (a mail sent right after
+saving still rendered the previous template). When testing any template
+change, wait ten minutes, then **confirm the rendered body in Brevo's log
+entry is actually the version under test** before drawing conclusions from
+it.
 
 ### A `config push` trap: never run it against this project again
 
@@ -201,6 +376,52 @@ Required values:
 - OAuth issuer and audience
 
 The service-role key is not required by ordinary web requests or MCP tools. The only Worker route that uses it is `DELETE /api/account` (account deletion, see the "Web Worker" section below) -- keep it out of every other environment/binding.
+
+## Custom domain (`upgradr.app`)
+
+Both Workers are served from `upgradr.app` rather than `*.workers.dev`. The
+domain was registered for the email fix (see "Gmail refuses mail from
+Brevo's shared sending subdomain"); moving the app URLs onto it was a
+follow-on, not the reason for buying it.
+
+| Worker | Hostname |
+| --- | --- |
+| `upgradr-web` | `https://upgradr.app` (apex) |
+| `upgradr-mcp-worker` | `https://mcp.upgradr.app` |
+
+The hostnames are declared in each `wrangler.jsonc` as
+`env.production.routes` with `custom_domain: true`, so Wrangler provisions
+the domain and its TLS certificate on deploy. They are deliberately *not*
+set up by hand in the Cloudflare dashboard -- keeping them in the config
+means the hostname, `APP_ORIGIN`/`MCP_RESOURCE_URL` and
+`MCP_ALLOWED_HOSTNAMES` are reviewed together in one diff.
+
+**These changes are not independently deployable.** The repo, Cloudflare and
+Supabase must move together or sign-in breaks in the gap. Cutover order:
+
+1. Deploy both Workers (`wrangler deploy --env production`), which creates
+   the custom domains. The `workers.dev` hostnames keep working, so nothing
+   is broken yet.
+2. Confirm both new hostnames serve TLS and respond.
+3. Update the Supabase Dashboard's Site URL and **every** Redirect URL
+   entry -- copy-pasted from `apps/web/wrangler.jsonc`, never retyped. See
+   "A one-character typo in the Redirect URL allow-list breaks sign-in
+   silently" above for what happens otherwise.
+4. Sign in end to end against the new hostname before considering it done.
+
+Two things that do not follow automatically:
+
+- **MCP clients must be re-added.** Anyone who ran `copilot mcp add` or
+  `claude mcp add` against a `workers.dev` URL has it pinned in local
+  config. Re-pointing is required, not optional: `MCP_RESOURCE_URL` is the
+  OAuth resource identifier that tokens are minted for, so a client still
+  using the old hostname fails audience validation rather than merely
+  redirecting.
+- **The `workers.dev` hostnames stay live** unless explicitly disabled in
+  the Cloudflare dashboard. That is useful as a fallback during cutover, but
+  leaving them enabled long-term means two origins can serve the app while
+  only one is in Supabase's allow-list -- a confusing failure if anyone
+  bookmarks the old one.
 
 ## Web Worker
 

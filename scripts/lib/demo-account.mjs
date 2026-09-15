@@ -31,8 +31,8 @@ import { authorizeAndExchange, registerClient } from "./mcp-agent-auth.mjs";
 // if the project or hostnames ever change again.
 export const PROD_SUPABASE_URL = "https://yshjthrciysbvzddvfgf.supabase.co";
 export const PROD_SUPABASE_ANON_KEY = "sb_publishable_VCw1z6v1S7nwNCL77cuCRA_077NaQfC";
-export const PROD_APP_ORIGIN = "https://upgradr-web.upgradr.workers.dev";
-export const PROD_MCP_URL = "https://upgradr-mcp-worker.upgradr.workers.dev/mcp";
+export const PROD_APP_ORIGIN = "https://upgradr.app";
+export const PROD_MCP_URL = "https://mcp.upgradr.app/mcp";
 
 export const DEFAULT_DEMO_EMAIL = "demo@upgradr.app";
 
