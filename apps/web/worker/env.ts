@@ -9,5 +9,14 @@ export type WebEnv = {
   // other route, never sent to the browser, and never logged. See
   // docs/deployment.md for how to configure it as a Wrangler secret.
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  // Throttles POST /api/auth/verify-otp (see worker/index.ts). Unlike the
+  // magic link's long, unguessable token_hash, the 6-digit code it sits
+  // alongside is brute-forceable, and Supabase's own token_verifications
+  // rate limit is keyed on this Worker's egress IP rather than the real
+  // end user (this Worker calls Supabase server-side), so it can't be
+  // relied on as a per-user attempt cap on its own. Optional so local dev
+  // without `wrangler dev`/the binding configured doesn't hard-fail --
+  // treated as "not rate limited" when absent (see the route's own comment).
+  OTP_VERIFY_RATE_LIMITER?: RateLimit;
 };
 

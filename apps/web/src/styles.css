@@ -198,6 +198,19 @@ p {
   margin-top: clamp(20px, 2.5vw, 32px);
 }
 
+/* Wraps the magic-link card and the optional OTP-code card so both sit in
+   the hero grid's single second column (see .hero) as one grid item,
+   stacked with the same spacing .panel + .panel already uses elsewhere. */
+.sign-in-column {
+  display: grid;
+  gap: clamp(20px, 2.5vw, 32px);
+}
+
+.otp-card .lede {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
 .sign-in-card {
   display: grid;
   gap: 14px;
