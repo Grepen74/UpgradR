@@ -80,11 +80,19 @@ now; you'll come back to it in Step 4.
 
 1. Unzip the `upgradr-mcp-skill.zip` file you downloaded (or were given) in
    the previous section. You should end up with two files: `SKILL.md` and
-   `mcp.mjs` in an `upgradr-mcp` folder.
-2. Then move (or drag, in Finder) the full unzipped folder into the 
-   `.copilot/skills` folder inside your home folder (typically at `~/.copilot/skills)`. 
-   (In Finder, press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal
-   hidden folders like `.copilot` if you don't see it.)
+   `mcp.mjs`. Double-clicking the zip in Finder puts them in a folder named
+   `upgradr-mcp-skill` — note the name, you'll fix it in the next step.
+2. Open the `.copilot/skills` folder inside your home folder (typically
+   `~/.copilot/skills`). In Finder, press
+   <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to reveal hidden folders
+   like `.copilot` if you don't see it.
+3. Create a folder there named exactly `upgradr-mcp` and put both files
+   inside it. The folder name matters — Copilot CLI won't find the skill
+   under any other name, so rename it from `upgradr-mcp-skill` if you
+   dragged the unzipped folder across.
+
+   *Already have an `upgradr-mcp` folder from a previous install?* Just
+   replace the two files inside it rather than making a new folder.
 
 You should now have:
 ```
