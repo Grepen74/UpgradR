@@ -470,6 +470,40 @@ The key is created fresh per request from `context.env` inside a single
 narrowly scoped helper (`worker/admin/supabaseAdmin.ts`) and is never reused
 for ordinary reads/writes, sent to the browser, or logged.
 
+### Keepalive cron (Free-plan project pausing)
+
+Supabase pauses a Free-plan project that "does not receive sufficient user
+database activity over the past week", with the guidance that "typically a
+few user requests to the database each day over the previous week is enough"
+([docs](https://supabase.com/docs/guides/platform/free-project-pausing)).
+The Web Worker therefore carries a Cron Trigger (`triggers.crons` under
+`env.production` in `apps/web/wrangler.jsonc`) that fires three times a day
+and calls `public.keepalive()` through PostgREST -- see
+`apps/web/worker/keepalive.ts`.
+
+The criterion is behavioural, not a clock you reset, which is why the cadence
+is a few times a day rather than once every few days. `public.keepalive()`
+exists (rather than the cron simply reading a table) because nothing in this
+schema is granted to `anon`, so an unauthenticated table read returns a
+permission error -- and failed requests are not documented as counting.
+Calling PostgREST with the service-role key instead would have broken the
+rule that it is never used for ordinary reads.
+
+Two consequences worth knowing:
+
+- **The migration must be applied before the cron can succeed.** Dispatch
+  `db-migrate.yml` before (or with) the deploy that adds the trigger,
+  otherwise every invocation fails with `404`.
+- **Failures are deliberately loud.** `runKeepalive` throws rather than
+  logging and returning, so a broken keepalive shows up as a failed Cron
+  Trigger invocation in the Cloudflare dashboard and `wrangler tail`. A
+  keepalive that fails silently is worse than none.
+
+This is a convenience, not a safety net: Supabase emails the project owner
+roughly a week before a pause takes effect, and a paused project can be
+restored with data intact for up to a year. Upgrading to Pro removes
+inactivity pausing entirely.
+
 ## MCP Worker
 
 Every value below is required -- the Worker refuses to start if one is missing,
