@@ -52,6 +52,13 @@
       // docs/deployment.md, "A one-character typo in the Redirect URL
       // allow-list breaks sign-in silently".
       "routes": [{ "pattern": "upgradr.app", "custom_domain": true }],
+      // Keeps the Free-plan Supabase project from being paused for
+      // inactivity -- see worker/keepalive.ts for why the cadence is a few
+      // times a day rather than once every few days. Declared here rather
+      // than at the top level so the cron only exists in production; a
+      // second, unattended copy of this schedule is not wanted anywhere
+      // else. Times are UTC.
+      "triggers": { "crons": ["0 6 * * *", "0 14 * * *", "0 22 * * *"] },
       "vars": {
         "APP_ORIGIN": "https://upgradr.app",
         "SUPABASE_URL": "https://yshjthrciysbvzddvfgf.supabase.co",

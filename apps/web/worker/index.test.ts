@@ -6,7 +6,8 @@ vi.mock("./supabase", () => ({
   createSupabaseServerClient: () => ({ auth: { signInWithOtp, verifyOtp } }),
 }));
 
-import app from "./index";
+import { app } from "./index";
+import worker from "./index";
 import type { WebEnv } from "./env";
 
 function makeEnv(overrides: Partial<WebEnv> = {}): WebEnv {
@@ -167,5 +168,34 @@ describe("POST /api/auth/verify-otp", () => {
 
     expect(res.status).toBe(200);
     expect(verifyOtp).toHaveBeenCalled();
+  });
+});
+
+describe("scheduled (keepalive cron)", () => {
+  const controller = { cron: "0 6 * * *", scheduledTime: 0, noRetry: () => {} } as ScheduledController;
+
+  it("calls the keepalive RPC", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response('"2026-01-01T00:00:00Z"', { status: 200 }));
+
+    await worker.scheduled?.(controller, makeEnv());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://project.supabase.co/rest/v1/rpc/keepalive",
+      expect.objectContaining({ method: "POST" }),
+    );
+    fetchMock.mockRestore();
+  });
+
+  // Awaited, not fire-and-forget: the rejection has to reach the runtime for
+  // Cloudflare to record the invocation as failed.
+  it("propagates failures so the cron invocation is marked failed", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("not found", { status: 404 }));
+
+    await expect(worker.scheduled?.(controller, makeEnv())).rejects.toThrow(/404/);
+    fetchMock.mockRestore();
   });
 });

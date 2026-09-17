@@ -10,6 +10,7 @@ import { z } from "zod";
 import { recordActivityEvent } from "./activity";
 import { authenticated, type AuthenticatedContext } from "./auth";
 import type { WebEnv } from "./env";
+import { runKeepalive } from "./keepalive";
 import accountRoute from "./routes/account";
 import activityRoute from "./routes/activity";
 import analyticsRoute from "./routes/analytics";
@@ -843,4 +844,20 @@ app.route("/api/account", accountRoute);
 
 app.all("*", async (context) => context.env.ASSETS.fetch(context.req.raw));
 
-export default app;
+// Exported for tests, which drive routes through `app.request()`. The default
+// export can no longer be the Hono app itself now that this Worker also has a
+// `scheduled` handler -- Cron Triggers are only delivered to an object with a
+// `scheduled` property (see the `triggers` block in wrangler.jsonc).
+export { app };
+
+export default {
+  fetch: (request, env, executionContext) => app.fetch(request, env, executionContext),
+  // Awaited rather than handed to `executionContext.waitUntil`: a scheduled
+  // handler already keeps the invocation alive until its promise settles, and
+  // awaiting is what lets a rejection mark the Cron Trigger invocation as
+  // failed. That failure is the only signal a broken keepalive gives, short
+  // of Supabase's pause warning email.
+  scheduled: async (_controller, env) => {
+    await runKeepalive(env);
+  },
+} satisfies ExportedHandler<WebEnv>;
