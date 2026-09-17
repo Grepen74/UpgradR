@@ -1,0 +1,41 @@
+-- Closes an unintended `anon` grant on a security definer function.
+--
+-- 20250115122700_document_storage_platform_quota.sql creates
+-- public.get_total_document_storage_bytes() and grants execute to
+-- `authenticated`, but never revokes anything -- so `anon` (the publishable
+-- key, which ships in the browser bundle) can call it too.
+--
+-- There are two separate reasons `anon` ends up with execute here, and
+-- revoking only the first is not enough:
+--
+--   1. Postgres grants execute to PUBLIC automatically on every newly
+--      created function. This is the trap 20250115123000_keepalive.sql
+--      already documents.
+--   2. Supabase additionally configures
+--      `alter default privileges in schema public grant execute on functions
+--      to anon, authenticated, service_role` (visible in pg_default_acl for
+--      both the `supabase_admin` and `postgres` grantors). Every new function
+--      in `public` therefore also gets an *explicit, named* grant to `anon`.
+--
+-- `revoke ... from public` removes (1) but leaves (2) completely intact --
+-- verified on a fresh `supabase db reset`, where `set role anon; select
+-- public.get_total_document_storage_bytes();` still returned a value with the
+-- PUBLIC grant already revoked. The named role must be revoked explicitly.
+--
+-- The exposure is small but real: the function is security definer precisely
+-- so it can see across every owner's rows, and it returns the aggregate byte
+-- total of all uploaded documents. Unauthenticated callers could poll it and
+-- infer platform-wide upload activity -- growth, usage patterns, roughly when
+-- documents are added -- without ever signing in. No row data leaks, but this
+-- was never meant to be readable without a session.
+--
+-- `authenticated` is deliberately left alone: it is the only path the
+-- application actually uses. worker/routes/documents.ts calls this via the
+-- caller's authenticated client (`auth.supabase.rpc`), never via the anon or
+-- service-role client, so revoking `anon` cannot break the upload flow.
+revoke execute on function public.get_total_document_storage_bytes() from public;
+revoke execute on function public.get_total_document_storage_bytes() from anon;
+
+-- Re-asserted so the intended grant survives the revokes above regardless of
+-- the order migrations are replayed in.
+grant execute on function public.get_total_document_storage_bytes() to authenticated;
