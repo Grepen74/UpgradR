@@ -32,6 +32,7 @@ export type ApplicationSummary = {
   source_url: string;
   source_provider: string;
   current_status: ApplicationStatus;
+  closing_date: string | null;
   match_score: number | null;
   confidence: number | null;
   mcp_client_id: string | null;
@@ -489,6 +490,11 @@ export const api = {
       statusEvents: ApplicationStatusEvent[];
       matchAssessments: MatchAssessment[];
     }>(`/api/applications/${encodeURIComponent(id)}`),
+  updateApplicationClosingDate: (id: string, closingDate: string | null) =>
+    apiRequest<{ closingDate: string | null }>(
+      `/api/applications/${encodeURIComponent(id)}/closing-date`,
+      { method: "PATCH", body: JSON.stringify({ closingDate }) },
+    ),
   attachLabel: (applicationId: string, labelId: string) =>
     apiRequest<{ label: LabelSummary }>(
       `/api/applications/${encodeURIComponent(applicationId)}/labels`,

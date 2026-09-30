@@ -24,6 +24,7 @@ function makeApplication(overrides: Partial<ApplicationSummary> = {}): Applicati
     source_url: "https://acme.example/jobs/1",
     source_provider: "acme.example",
     current_status: "saved",
+    closing_date: null,
     match_score: 82,
     confidence: null,
     mcp_client_id: null,
@@ -66,6 +67,25 @@ describe("KanbanBoard", () => {
     expect(within(offerColumn).getByText("Offer Role")).toBeVisible();
 
     expect(screen.queryByRole("region", { name: /closed/i })).not.toBeInTheDocument();
+  });
+
+  it("shows an accessible alarm clock only for closing Inbox/Shortlist cards", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ tasks: [] }));
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const date = [
+      tomorrow.getFullYear(),
+      String(tomorrow.getMonth() + 1).padStart(2, "0"),
+      String(tomorrow.getDate()).padStart(2, "0"),
+    ].join("-");
+    render(<KanbanBoard applications={[
+      makeApplication({ id: "inbox", title: "Inbox Role", closing_date: date }),
+      makeApplication({ id: "shortlist", title: "Shortlist Role", current_status: "shortlisted", closing_date: date }),
+      makeApplication({ id: "applied", title: "Applied Role", current_status: "applied", closing_date: date }),
+    ]} onRefresh={vi.fn()} onOpenApplication={vi.fn()} />);
+
+    expect(screen.getAllByTitle("Only 1 day left to apply")).toHaveLength(2);
+    expect(within(screen.getByRole("region", { name: /applied/i })).queryByTitle("Only 1 day left to apply")).toBeNull();
   });
 
   it("excludes closed opportunities even if one is passed in by the caller", async () => {

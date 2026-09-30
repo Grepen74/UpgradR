@@ -6,6 +6,7 @@ import { api, type ApplicationSummary, type TaskSummary } from "./api";
 import { StatusMessage } from "./components/Feedback";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { FitText } from "./components/FitText";
+import { ClosingDateWarning, closingDateUrgency, useCalendarClock } from "./components/ClosingDateWarning";
 import {
   ATTENTION_BADGE_LABELS,
   availableNextStatuses,
@@ -75,6 +76,7 @@ export function KanbanBoard({
   // in the card so only one dialog can ever be open, and so the modal is not
   // nested inside a draggable article.
   const [pendingDismissal, setPendingDismissal] = useState<ApplicationSummary>();
+  const calendarNow = useCalendarClock();
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -371,6 +373,7 @@ export function KanbanBoard({
                         {dropIndex === index ? <DropIndicator /> : null}
                         <OpportunityCard
                           application={application}
+                          calendarNow={calendarNow}
                           tasks={tasks}
                           updating={updatingId === application.id}
                           position={index + 1}
@@ -431,6 +434,7 @@ function DropIndicator() {
 
 function OpportunityCard({
   application,
+  calendarNow,
   tasks,
   updating,
   position,
@@ -443,6 +447,7 @@ function OpportunityCard({
   onKeyboardMove,
 }: {
   application: ApplicationSummary;
+  calendarNow: Date;
   tasks: TaskSummary[];
   updating: boolean;
   position: number;
@@ -457,6 +462,7 @@ function OpportunityCard({
   const applicationTasks = tasks.filter((task) => task.application_id === application.id);
   const badges = deriveAttentionBadges(application, applicationTasks);
   const followUp = nextFollowUpTask(application.id, applicationTasks);
+  const closingUrgency = closingDateUrgency(application.closing_date, application.current_status, calendarNow);
   // A card is both a drag handle and a link into the detail view, so the
   // press has to be classified on release: a press that ends roughly where it
   // started, without a drag, opens the opportunity. Anything else is a drag
@@ -542,6 +548,7 @@ function OpportunityCard({
       </div>
 
       <div className="kanban-card-meta">
+        {closingUrgency ? <ClosingDateWarning urgency={closingUrgency} /> : null}
         {application.match_score === null ? null : (
           <span className="pill pill-muted">{application.match_score}% match</span>
         )}

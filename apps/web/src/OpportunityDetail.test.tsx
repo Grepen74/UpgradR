@@ -34,6 +34,7 @@ const baseApplication = {
   gaps: ["Kubernetes"],
   confidence: 0.7,
   current_status: "applied" as const,
+  closing_date: null,
   mcp_client_id: null,
   applied_at: null,
   archived_at: null,
@@ -49,14 +50,24 @@ function mockDetailFetch(
     matchAssessments?: unknown[];
     suppressions?: unknown[];
     application?: Record<string, unknown>;
+    closingDateError?: boolean;
   } = {},
 ) {
+  const application: Record<string, unknown> = { ...baseApplication, ...(overrides.application ?? {}) };
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = requestUrl(input);
     const method = init?.method ?? "GET";
 
     if (method === "POST" || method === "DELETE") {
       overrides.posts?.(url, String(init?.body ?? ""));
+    }
+    if (url.includes("/api/applications/app-1/closing-date") && method === "PATCH") {
+      overrides.posts?.(url, String(init?.body ?? ""));
+      if (overrides.closingDateError) {
+        return jsonResponse({ error: "Unable to update closing date" }, { status: 502 });
+      }
+      application.closing_date = (JSON.parse(String(init?.body)) as { closingDate: string | null }).closingDate;
+      return jsonResponse({ closingDate: application.closing_date });
     }
 
     if (url.includes("/api/applications/app-1/labels") && method === "POST") {
@@ -67,7 +78,7 @@ function mockDetailFetch(
     }
     if (url.includes("/api/applications/app-1") && method === "GET") {
       return jsonResponse({
-        application: { ...baseApplication, ...(overrides.application ?? {}) },
+        application,
         statusEvents: [],
         matchAssessments: overrides.matchAssessments ?? [],
       });
@@ -129,10 +140,67 @@ describe("OpportunityDetail", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Senior Engineer" })).toBeVisible();
     });
+
     expect(screen.getByText(/82% match/)).toBeVisible();
     expect(screen.getByText("Strong fit on backend experience.")).toBeVisible();
     expect(screen.getByText("Dream job")).toBeVisible();
     expect(screen.getByText("applied")).toBeVisible();
+  });
+
+  it("saves and clears a closing date on any status and refreshes the board", async () => {
+    const posts: { url: string; body: string }[] = [];
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    mockDetailFetch({ posts: (url, body) => posts.push({ url, body }) });
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={onChanged} />);
+
+    const date = await screen.findByLabelText("Posting closes on");
+    fireEvent.change(date, { target: { value: "2026-10-05" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save date" }));
+    await waitFor(() => expect(posts).toContainEqual({
+      url: "/api/applications/app-1/closing-date",
+      body: '{"closingDate":"2026-10-05"}',
+    }));
+    await waitFor(() => expect(date).toHaveValue("2026-10-05"));
+    expect(screen.queryByText(/left to apply|closes today|posting closed/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear date" }));
+    await waitFor(() => expect(posts).toContainEqual({
+      url: "/api/applications/app-1/closing-date",
+      body: '{"closingDate":null}',
+    }));
+    await waitFor(() => expect(date).toHaveValue(""));
+    expect(onChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a date warning in Inbox but hides urgency on closed opportunities", async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const date = [
+      tomorrow.getFullYear(),
+      String(tomorrow.getMonth() + 1).padStart(2, "0"),
+      String(tomorrow.getDate()).padStart(2, "0"),
+    ].join("-");
+    mockDetailFetch({ application: { closing_date: date, current_status: "saved" } });
+    const { unmount } = render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+    expect(await screen.findByText("Only 1 day left to apply")).toBeVisible();
+    expect(screen.getByLabelText("Posting closes on")).toHaveValue(date);
+
+    unmount();
+    vi.restoreAllMocks();
+    mockDetailFetch({ application: { closing_date: date, current_status: "archived" } });
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+    expect(await screen.findByLabelText("Posting closes on")).toHaveValue(date);
+    expect(screen.queryByText("Only 1 day left to apply")).not.toBeInTheDocument();
+  });
+
+  it("reports a failed date update without pretending it was saved", async () => {
+    mockDetailFetch({ closingDateError: true });
+    render(<OpportunityDetail applicationId="app-1" onClose={vi.fn()} onChanged={vi.fn()} />);
+    const date = await screen.findByLabelText("Posting closes on");
+    fireEvent.change(date, { target: { value: "2026-10-05" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save date" }));
+    expect(await screen.findByText("Unable to update closing date")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Clear date" })).not.toBeInTheDocument();
   });
 
   it("explains that the score is the agent's estimate, not an UpgradR calculation", async () => {

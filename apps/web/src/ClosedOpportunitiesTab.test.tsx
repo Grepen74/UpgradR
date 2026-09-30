@@ -13,6 +13,7 @@ function makeApplication(overrides: Partial<ApplicationSummary> = {}): Applicati
     source_url: "https://acme.example/jobs/1",
     source_provider: "acme.example",
     current_status: "rejected",
+    closing_date: null,
     match_score: 82,
     confidence: null,
     mcp_client_id: null,

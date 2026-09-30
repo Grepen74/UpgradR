@@ -1927,6 +1927,48 @@ input[type="radio"] {
   font-size: 0.78rem;
 }
 
+.closing-date-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.closing-date-warning svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.closing-date-warning-orange {
+  color: #965000;
+  background: #fff1d6;
+  border-color: #e8b65d;
+}
+
+.closing-date-warning-red {
+  color: #b12626;
+  background: #ffe7e7;
+  border-color: #e69a9a;
+}
+
+.closing-date-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.closing-date-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .kanban-card-followup {
   margin: 0;
   color: #4935be;
