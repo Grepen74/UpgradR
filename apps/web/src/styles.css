@@ -1903,7 +1903,8 @@ input[type="radio"] {
 }
 
 .kanban-card-open strong {
-  font-size: 0.98rem;
+  /* `--fit-scale` comes from FitText: shrinks a long unbreakable title. */
+  font-size: calc(0.98rem * var(--fit-scale, 1));
   letter-spacing: -0.005em;
 }
 
@@ -1914,6 +1915,7 @@ input[type="radio"] {
 .kanban-card-open span {
   color: var(--ink-subtle);
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .kanban-card-meta {
@@ -2553,4 +2555,17 @@ input[type="radio"] {
   .kanban-drop-indicator {
     transition: none;
   }
+}
+
+/* FitText: see components/FitText.tsx. The consumer's own font-size rule
+   multiplies `--fit-scale`; below the minimum scale the text is clipped with
+   an ellipsis on the overflowing line instead. */
+.fit-text {
+  display: block;
+  min-width: 0;
+}
+
+.fit-text[data-fit="truncated"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { api, type ApplicationSummary, type TaskSummary } from "./api";
 import { StatusMessage } from "./components/Feedback";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { FitText } from "./components/FitText";
 import {
   ATTENTION_BADGE_LABELS,
   availableNextStatuses,
@@ -506,7 +507,7 @@ function OpportunityCard({
     >
       <div className="kanban-card-top">
         <button type="button" className="kanban-card-open" onClick={onOpen}>
-          <strong>{application.title}</strong>
+          <FitText text={application.title} />
           <span>
             {application.company_name}
             {application.location ? ` · ${application.location}` : ""}
