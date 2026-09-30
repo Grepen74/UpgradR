@@ -101,6 +101,50 @@ describe("MCP prompts", () => {
       expect(render(FULL, "weekly_job_search")).toContain("does not search the internet");
     });
 
+    // Local-language-only postings (common in the public sector) were invisible
+    // to English-only title searches, e.g. "Senior systemutvecklare" in Sweden.
+    it("searches in local languages in addition to English, not instead of it", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("in English **and** in every other language");
+      expect(text).toContain("additive, never a replacement");
+      expect(text).toContain("Where a location has several such languages, cover each one");
+      expect(text).toContain("\"Remote\" is not a language or a market");
+      expect(text).toContain("Run it in the local language too");
+    });
+
+    it("gives example source types to calibrate coverage without making them a closed list", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("national public employment service");
+      expect(text).toContain("public-sector and government career sites");
+      expect(text).toContain("neither a checklist nor a limit");
+      expect(text).toContain("prefer the employer's own posting");
+    });
+
+    it("covers every search combination before going deep and reports what it missed", () => {
+      expect(render(FULL, "weekly_job_search")).toContain(
+        "say in your report which combinations you did not reach",
+      );
+    });
+
+    it("treats translated versions of an ad as one opening, since the fingerprint includes the title", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("treat translated or localized versions of an ad as the same opening");
+      expect(text).toContain("the stored fingerprint includes the title");
+    });
+
+    it("does not infer a language requirement from the posting's language", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("Do not infer a language requirement from the language a posting is written in");
+      expect(text).toContain("treat it as unverified rather than as a gap");
+    });
+
+    it("reports local-language coverage with or without write access", () => {
+      expect(render(FULL, "weekly_job_search")).toContain("the local-language variants");
+      expect(render(["mcp", "applications:read"], "weekly_job_search")).toContain(
+        "the local-language variants",
+      );
+    });
+
     it("discourages routine use of allowSimilar", () => {
       const text = render(FULL, "weekly_job_search");
       expect(text).toContain("allowSimilar");
