@@ -5,6 +5,7 @@ import {
   accountDeletionSchema,
   activityEntityTypeSchema,
   applicationIdSchema,
+  applicationClosingDateSchema,
   applicationLabelAttachSchema,
   companyCreateSchema,
   companyUpdateSchema,
@@ -39,6 +40,15 @@ describe("applicationIdSchema", () => {
   });
 });
 
+describe("applicationClosingDateSchema", () => {
+  it("accepts a calendar date or null and rejects missing, invalid and unrelated fields", () => {
+    expect(applicationClosingDateSchema.safeParse({ closingDate: "2026-10-05" }).success).toBe(true);
+    expect(applicationClosingDateSchema.safeParse({ closingDate: null }).success).toBe(true);
+    for (const value of [{}, { closingDate: "2026-02-30" }, { closingDate: "tomorrow" }, { closingDate: "2026-10-05", current_status: "closed" }]) {
+      expect(applicationClosingDateSchema.safeParse(value).success).toBe(false);
+    }
+  });
+});
 describe("magicLinkSchema", () => {
   it("accepts a bare email with no returnTo", () => {
     expect(magicLinkSchema.safeParse({ email: "person@example.com" }).success).toBe(true);

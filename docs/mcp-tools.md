@@ -193,6 +193,7 @@ Requires scope: `applications:write` (plus `mcp`).
 | `proposals[].sourceProvider` | string | yes | Where it was found, e.g. 'linkedin', 'greenhouse', 'company-site'. |
 | `proposals[].externalId` | string | no | The provider's own stable job id, when the posting exposes one. Supply it whenever available: combined with sourceProvider it is the most reliable duplicate key, and it survives URL changes. |
 | `proposals[].description` | string | no | Job description text. Stored verbatim for the user to read. |
+| `proposals[].closingDate` | string | no | Posting's explicit application closing date (YYYY-MM-DD). Omit if the date is absent, relative-only, or uncertain; never guess. |
 | `proposals[].compensationMin` | number | no | Bottom of the published salary range, exactly as the posting states it. Do not convert to another period -- send compensationPeriod alongside and the app normalizes when comparing against the user's floor. |
 | `proposals[].compensationMax` | number | no | Top of the published salary range, in the same period and currency as compensationMin. |
 | `proposals[].compensationPeriod` | `month` \| `year` | no | Whether the range above is per 'month' or per 'year'. Required whenever you send an amount. State what the posting said rather than converting; if it quotes an hourly or daily rate, convert to a monthly figure yourself and say so in matchRationale, since that conversion needs an assumption about hours worked that only you can make. |

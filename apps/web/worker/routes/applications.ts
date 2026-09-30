@@ -5,6 +5,7 @@ import { recordActivityEvent } from "../activity";
 import { authenticated } from "../auth";
 import type { WebEnv } from "../env";
 import {
+  applicationClosingDateSchema,
   applicationIdSchema,
   applicationLabelAttachSchema,
   boardMoveSchema,
@@ -19,10 +20,10 @@ import {
 // keys, so PostgREST can infer the join without an explicit hint. RLS on
 // application_labels/labels still applies to the embedded rows.
 const APPLICATION_LIST_COLUMNS =
-  "id,title,company_name,location,source_url,source_provider,current_status,match_score,confidence,mcp_client_id,board_position,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
+  "id,title,company_name,location,source_url,source_provider,current_status,closing_date,match_score,confidence,mcp_client_id,board_position,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
 
 const APPLICATION_DETAIL_COLUMNS =
-  "id,company_id,primary_contact_id,title,company_name,location,source_url,source_provider,external_id,description,compensation_min,compensation_max,compensation_currency,compensation_period,match_score,match_rationale,strengths,gaps,confidence,current_status,mcp_client_id,applied_at,archived_at,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
+  "id,company_id,primary_contact_id,title,company_name,location,source_url,source_provider,external_id,description,closing_date,compensation_min,compensation_max,compensation_currency,compensation_period,match_score,match_rationale,strengths,gaps,confidence,current_status,mcp_client_id,applied_at,archived_at,created_at,updated_at,application_labels(labels(id,name,color,created_at,updated_at))";
 
 type EmbeddedLabel = {
   id: string;
@@ -102,6 +103,7 @@ applicationsRoute.post("/", async (context) => {
       source_provider: proposal.sourceProvider,
       external_id: proposal.externalId ?? null,
       description: proposal.description ?? null,
+      closing_date: proposal.closingDate ?? null,
       compensation_min: proposal.compensationMin ?? null,
       compensation_max: proposal.compensationMax ?? null,
       compensation_currency: proposal.compensationCurrency?.toUpperCase() ?? null,
@@ -189,6 +191,45 @@ applicationsRoute.get("/:id", async (context) => {
     statusEvents: statusEventsResult.data,
     matchAssessments: matchAssessmentsResult.data,
   });
+});
+
+applicationsRoute.patch("/:id/closing-date", async (context) => {
+  const auth = await authenticated(context);
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const applicationId = applicationIdSchema.safeParse(context.req.param("id"));
+  if (!applicationId.success) {
+    return context.json({ error: "Invalid application identifier" }, 400);
+  }
+  const parsed = applicationClosingDateSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) {
+    return context.json({ error: "Invalid closing date" }, 400);
+  }
+
+  const { data, error } = await auth.supabase
+    .from("applications")
+    .update({ closing_date: parsed.data.closingDate })
+    .eq("id", applicationId.data)
+    .eq("owner_id", auth.userId)
+    .select("id,closing_date")
+    .single();
+  if (error) {
+    const status = error.code === "PGRST116" ? 404 : 502;
+    return context.json(
+      { error: status === 404 ? "Opportunity not found" : "Unable to update closing date" },
+      status,
+    );
+  }
+
+  await recordActivityEvent(auth, {
+    entityType: "application",
+    entityId: data.id,
+    eventType: "updated",
+    payload: { closingDate: data.closing_date },
+  });
+  return context.json({ closingDate: data.closing_date });
 });
 
 applicationsRoute.post("/:id/status", async (context) => {

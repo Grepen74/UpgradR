@@ -83,6 +83,13 @@ describe("MCP prompts", () => {
   });
 
   describe("weekly_job_search", () => {
+    it("extracts only explicit absolute posting closing dates", () => {
+      const text = render(FULL, "weekly_job_search");
+      expect(text).toContain("closingDate");
+      expect(text).toContain("YYYY-MM-DD");
+      expect(text).toContain("relative deadline");
+      expect(text).toContain("never guess");
+    });
     it("orders de-duplication before proposing", () => {
       const text = render(FULL, "weekly_job_search");
       expect(text.indexOf("list_known_opportunity_keys")).toBeGreaterThan(-1);

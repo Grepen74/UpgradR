@@ -25,6 +25,9 @@ export {
 };
 
 export const applicationIdSchema = z.uuid();
+export const applicationClosingDateSchema = z.strictObject({
+  closingDate: z.iso.date().nullable(),
+});
 
 // Generic UUID path-parameter validator shared by the companies, contacts,
 // and notes routes.

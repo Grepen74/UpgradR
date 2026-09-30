@@ -53,4 +53,22 @@ describe("job proposal contracts", () => {
 
     expect(result.proposals[0]?.compensationCurrency).toBe("SEK");
   });
+
+  it("accepts an optional exact closing date but rejects impossible and inferred values", () => {
+    const proposal = {
+      title: "Senior Engineer",
+      companyName: "Example",
+      sourceUrl: "https://example.com/jobs/1",
+      sourceProvider: "example.com",
+    };
+    expect(createJobProposalsSchema.parse({ proposals: [proposal] }).proposals[0]?.closingDate).toBeUndefined();
+    expect(createJobProposalsSchema.parse({
+      proposals: [{ ...proposal, closingDate: "2028-02-29" }],
+    }).proposals[0]?.closingDate).toBe("2028-02-29");
+    for (const closingDate of ["2026-02-30", "tomorrow", "2026-1-5", null]) {
+      expect(createJobProposalsSchema.safeParse({
+        proposals: [{ ...proposal, closingDate }],
+      }).success).toBe(false);
+    }
+  });
 });

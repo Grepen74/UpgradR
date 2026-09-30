@@ -79,6 +79,9 @@ export const jobProposalSchema = z.object({
     .max(20_000)
     .optional()
     .describe("Job description text. Stored verbatim for the user to read."),
+  closingDate: z.iso.date().optional().describe(
+    "Posting's explicit application closing date (YYYY-MM-DD). Omit if the date is absent, relative-only, or uncertain; never guess.",
+  ),
   compensationMin: z
     .number()
     .finite()

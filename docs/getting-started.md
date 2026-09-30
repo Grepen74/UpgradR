@@ -50,6 +50,14 @@ propose new opportunities for your review — all through the same secure
 interface (called MCP), where you always stay in control of what it's
 allowed to do and only ever see your own data.
 
+If a posting states a closing date, the agent can include it when proposing
+the opportunity. Open any opportunity to add, correct, or clear its **Posting
+closes on** date yourself. The Inbox and Shortlist show an alarm clock when there
+are fewer than seven calendar days left to apply (orange for two to six days,
+red from the day before closing onward, including past-due postings). Other
+pipeline stages keep the date but show no urgency warning. This never changes
+an opportunity's status automatically.
+
 Pick whichever assistant you already use:
 
 ### Option A — Claude or Claude Code

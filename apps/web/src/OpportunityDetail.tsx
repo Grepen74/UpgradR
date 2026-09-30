@@ -26,6 +26,7 @@ import {
   type TaskSummary,
 } from "./api";
 import { ConfirmButton, StatusMessage } from "./components/Feedback";
+import { ClosingDateWarning, closingDateUrgency, useCalendarClock } from "./components/ClosingDateWarning";
 import { availableNextStatuses, groupStatusesByStage } from "./lib/applications";
 import { describeActivityEvent } from "./lib/activity";
 import { isTaskOverdue } from "./lib/tasks";
@@ -71,6 +72,7 @@ export function OpportunityDetail({
   const [labels, setLabels] = useState<LabelSummary[]>([]);
   const [suppressions, setSuppressions] = useState<SuppressionSummary[]>([]);
   const [busy, setBusy] = useState(false);
+  const calendarNow = useCalendarClock();
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -165,6 +167,19 @@ export function OpportunityDetail({
       await Promise.all([refresh(), onChanged()]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update status.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveClosingDate(closingDate: string | null) {
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      await api.updateApplicationClosingDate(applicationId, closingDate);
+      await Promise.all([refresh(), onChanged()]);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update closing date.");
     } finally {
       setBusy(false);
     }
@@ -370,7 +385,12 @@ export function OpportunityDetail({
 
         {detail ? (
           <>
-            <OverviewSection application={detail.application} />
+            <OverviewSection
+              application={detail.application}
+              calendarNow={calendarNow}
+              busy={busy}
+              onSaveClosingDate={(date) => void saveClosingDate(date)}
+            />
 
             <StatusSection
               application={detail.application}
@@ -435,7 +455,22 @@ export function OpportunityDetail({
   );
 }
 
-function OverviewSection({ application }: { application: ApplicationDetailRecord }) {
+function OverviewSection({
+  application,
+  calendarNow,
+  busy,
+  onSaveClosingDate,
+}: {
+  application: ApplicationDetailRecord;
+  calendarNow: Date;
+  busy: boolean;
+  onSaveClosingDate: (date: string | null) => void;
+}) {
+  const [closingDate, setClosingDate] = useState(application.closing_date ?? "");
+  useEffect(() => {
+    setClosingDate(application.closing_date ?? "");
+  }, [application.closing_date, application.id]);
+  const urgency = closingDateUrgency(application.closing_date, application.current_status, calendarNow);
   const compensation = formatCompensationRange({
     min: application.compensation_min,
     max: application.compensation_max,
@@ -469,6 +504,33 @@ function OverviewSection({ application }: { application: ApplicationDetailRecord
           ) : null}
         </p>
       ) : null}
+      <form
+        className="closing-date-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSaveClosingDate(closingDate || null);
+        }}
+      >
+        <label htmlFor="opportunityClosingDate">Posting closes on</label>
+        <div className="closing-date-controls">
+          <input
+            id="opportunityClosingDate"
+            type="date"
+            value={closingDate}
+            onChange={(event) => setClosingDate(event.target.value)}
+            disabled={busy}
+          />
+          {urgency ? <ClosingDateWarning urgency={urgency} showLabel /> : null}
+          <button className="button secondary" type="submit" disabled={busy || closingDate === (application.closing_date ?? "")}>
+            Save date
+          </button>
+          {application.closing_date ? (
+            <button className="button secondary" type="button" disabled={busy} onClick={() => onSaveClosingDate(null)}>
+              Clear date
+            </button>
+          ) : null}
+        </div>
+      </form>
     </section>
   );
 }

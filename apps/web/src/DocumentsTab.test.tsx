@@ -24,6 +24,7 @@ const applications: ApplicationSummary[] = [
     source_url: "https://acme.example/jobs/1",
     source_provider: "acme.example",
     current_status: "saved",
+    closing_date: null,
     match_score: null,
     confidence: null,
     mcp_client_id: null,

@@ -45,7 +45,7 @@ const moveApplicationStatusSchema = z.object({
 });
 
 const APPLICATION_SELECT =
-  "id,title,company_name,location,source_url,source_provider,current_status,match_score,match_rationale,compensation_min,compensation_max,compensation_currency,compensation_period,created_at,updated_at";
+  "id,title,company_name,location,source_url,source_provider,current_status,closing_date,match_score,match_rationale,compensation_min,compensation_max,compensation_currency,compensation_period,created_at,updated_at";
 
 /**
  * Schema per `supabase/migrations/20250115120500_applications.sql`,
@@ -150,6 +150,7 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
         source_provider: proposal.sourceProvider,
         external_id: proposal.externalId ?? null,
         description: proposal.description ?? null,
+        closing_date: proposal.closingDate ?? null,
         compensation_min: proposal.compensationMin ?? null,
         compensation_max: proposal.compensationMax ?? null,
         compensation_currency: proposal.compensationCurrency ?? null,
@@ -264,4 +265,3 @@ export function registerApplicationTools(server: McpServer, ctx: ToolContext): v
     },
   );
 }
-

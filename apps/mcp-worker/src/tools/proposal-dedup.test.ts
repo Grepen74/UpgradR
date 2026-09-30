@@ -60,6 +60,7 @@ describe("create_job_proposals", () => {
         sourceUrl: "acme.example/jobs/1",
         sourceProvider: "acme.example",
         externalId: "JOB-1",
+        closingDate: "2026-10-06",
         matchScore: 82,
         strengths: ["Swift"],
       },
@@ -100,6 +101,7 @@ describe("create_job_proposals", () => {
         source_provider: "acme.example",
         external_id: "JOB-1",
         description: null,
+        closing_date: "2026-10-06",
         compensation_min: null,
         compensation_max: null,
         compensation_currency: null,
@@ -119,6 +121,7 @@ describe("create_job_proposals", () => {
         source_provider: "acme.example",
         external_id: null,
         description: null,
+        closing_date: null,
         compensation_min: null,
         compensation_max: null,
         compensation_currency: null,
@@ -170,6 +173,15 @@ describe("create_job_proposals", () => {
     expect(result.isError).toBeUndefined();
     const [, body] = rpc.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect((body["p_proposals"] as unknown[]).length).toBe(2);
+  });
+
+  it("rejects impossible closing dates before invoking the proposal RPC", () => {
+    expect(createJobProposalsSchema.safeParse({
+      proposals: [{
+        title: "Role", companyName: "Acme", sourceUrl: "https://acme.example/jobs/2",
+        sourceProvider: "acme", closingDate: "2026-02-30",
+      }],
+    }).success).toBe(false);
   });
 
   it("refuses without the applications:write scope", async () => {
