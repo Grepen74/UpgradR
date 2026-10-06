@@ -14,6 +14,17 @@ import {
   nextFollowUpTask,
 } from "./lib/applications";
 import { formatRelativeAge } from "./lib/time";
+import { opportunityDragType, opportunityUrlFromTransfer } from "./lib/opportunityUrl";
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest(
+    'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+  );
+}
+
+function isOpportunityDrag(transfer: DataTransfer | null): boolean {
+  return !!transfer && Array.from(transfer.types ?? []).includes(opportunityDragType);
+}
 
 // The active board never renders (or accepts drops onto) a "Closed" column
 // -- closing an opportunity happens exclusively through the explicit outcome
@@ -53,14 +64,20 @@ export function KanbanBoard({
   onRefresh,
   onOpenApplication,
   onOpenClosed,
+  urlShortcutsEnabled = true,
 }: {
   applications: ApplicationSummary[];
   closedCount?: number;
   onRefresh: () => Promise<void>;
   onOpenApplication: (applicationId: string) => void;
   onOpenClosed?: () => void;
+  urlShortcutsEnabled?: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const [sourceUrlInput, setSourceUrlInput] = useState("");
+  const [urlDragOver, setUrlDragOver] = useState(false);
+  const [focusPrefilledForm, setFocusPrefilledForm] = useState(false);
+  const roleInputRef = useRef<HTMLInputElement>(null);
   const [formMessage, setFormMessage] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>();
@@ -77,6 +94,113 @@ export function KanbanBoard({
   // nested inside a draggable article.
   const [pendingDismissal, setPendingDismissal] = useState<ApplicationSummary>();
   const calendarNow = useCalendarClock();
+  const canPrefillUrl = urlShortcutsEnabled && !pendingDismissal && !saving;
+
+  useEffect(() => {
+    if (focusPrefilledForm && showForm) {
+      roleInputRef.current?.focus();
+      roleInputRef.current?.closest("form")?.scrollIntoView?.({ block: "nearest" });
+      setFocusPrefilledForm(false);
+    }
+  }, [focusPrefilledForm, showForm]);
+
+  useEffect(() => {
+    let dragDepth = 0;
+    function modalOpen() {
+      return !!document.querySelector('[aria-modal="true"], dialog[open]');
+    }
+    function receiveUrl(event: ClipboardEvent | DragEvent, transfer: DataTransfer | null) {
+      if (!transfer || isEditableTarget(event.target) || isOpportunityDrag(transfer)) {
+        return;
+      }
+      if (event.type === "drop" && applications.some((item) => item.id === transfer.getData("text/plain"))) {
+        return;
+      }
+      const result = opportunityUrlFromTransfer(transfer);
+      if (result.kind === "unrelated") {
+        return;
+      }
+      // Even a disabled shortcut must not let an external URL drop navigate
+      // away from an open dialog or an in-flight save.
+      if (event.type === "drop" || (canPrefillUrl && !modalOpen())) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (!canPrefillUrl || modalOpen()) {
+        return;
+      }
+      if (result.kind === "invalid") {
+        setStatusMessage(result.message);
+        return;
+      }
+      setSourceUrlInput(result.url);
+      setShowForm(true);
+      setFormMessage(undefined);
+      setStatusMessage(undefined);
+      setFocusPrefilledForm(true);
+      setAnnouncement("Job posting URL prefilled. Complete the opportunity details, then save.");
+    }
+    function paste(event: ClipboardEvent) {
+      receiveUrl(event, event.clipboardData);
+    }
+    function drop(event: DragEvent) {
+      dragDepth = 0;
+      setUrlDragOver(false);
+      receiveUrl(event, event.dataTransfer);
+    }
+    function dragOver(event: DragEvent) {
+      const transfer = event.dataTransfer;
+      if (!transfer || isOpportunityDrag(transfer)) {
+        return;
+      }
+      const types = Array.from(transfer.types ?? []);
+      const eligible = !types.includes("Files")
+        && (types.includes("text/uri-list") || types.includes("text/plain"))
+        && !isEditableTarget(event.target);
+      const enabled = canPrefillUrl && !modalOpen();
+      setUrlDragOver(eligible && enabled);
+      if (eligible) {
+        event.preventDefault();
+        event.stopPropagation();
+        transfer.dropEffect = enabled ? "copy" : "none";
+      }
+    }
+    function dragLeave(event: DragEvent) {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0 && !event.relatedTarget) {
+        setUrlDragOver(false);
+      }
+    }
+    function dragEnter(event: DragEvent) {
+      if (!isOpportunityDrag(event.dataTransfer)) {
+        dragDepth += 1;
+      }
+    }
+    function dragEnd() {
+      dragDepth = 0;
+      setUrlDragOver(false);
+    }
+    document.addEventListener("paste", paste, true);
+    document.addEventListener("drop", drop, true);
+    document.addEventListener("dragover", dragOver, true);
+    document.addEventListener("dragenter", dragEnter, true);
+    document.addEventListener("dragleave", dragLeave, true);
+    document.addEventListener("dragend", dragEnd, true);
+    return () => {
+      document.removeEventListener("paste", paste, true);
+      document.removeEventListener("drop", drop, true);
+      document.removeEventListener("dragover", dragOver, true);
+      document.removeEventListener("dragenter", dragEnter, true);
+      document.removeEventListener("dragleave", dragLeave, true);
+      document.removeEventListener("dragend", dragEnd, true);
+    };
+  }, [applications, canPrefillUrl]);
+
+  useEffect(() => {
+    if (!canPrefillUrl) {
+      setUrlDragOver(false);
+    }
+  }, [canPrefillUrl]);
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -130,6 +254,7 @@ export function KanbanBoard({
         sourceProvider: new URL(sourceUrl).hostname,
       });
       formElement.reset();
+      setSourceUrlInput("");
       setShowForm(false);
       await onRefresh();
     } catch (error) {
@@ -259,17 +384,28 @@ export function KanbanBoard({
         <div>
           <p className="eyebrow">Pipeline</p>
           <h2>Every opportunity, one place to move it forward</h2>
+          <p>Drop a job link here, or paste with Cmd/Ctrl+V outside a field.</p>
         </div>
-        <button className="button primary" onClick={() => setShowForm((value) => !value)}>
+        <button className="button primary" onClick={() => {
+          setSourceUrlInput("");
+          setFormMessage(undefined);
+          setShowForm((value) => !value);
+        }}>
           {showForm ? "Close form" : "Add opportunity"}
         </button>
       </div>
+
+      {urlDragOver ? (
+        <div className="opportunity-url-drop-cue" role="status">
+          Drop one job posting URL to prefill Add opportunity
+        </div>
+      ) : null}
 
       {showForm ? (
         <form className="opportunity-form panel" onSubmit={(event) => void addOpportunity(event)}>
           <div>
             <label htmlFor="title">Role</label>
-            <input id="title" name="title" required maxLength={200} />
+            <input ref={roleInputRef} id="title" name="title" required maxLength={200} />
           </div>
           <div>
             <label htmlFor="companyName">Company</label>
@@ -291,8 +427,10 @@ export function KanbanBoard({
               spellCheck={false}
               placeholder="www.example.com/jobs/role"
               required
+              value={sourceUrlInput}
+              onChange={(event) => setSourceUrlInput(event.currentTarget.value)}
               onBlur={(event) => {
-                event.currentTarget.value = normalizeHttpUrlInput(event.currentTarget.value);
+                setSourceUrlInput(normalizeHttpUrlInput(event.currentTarget.value));
               }}
             />
           </div>
@@ -335,6 +473,9 @@ export function KanbanBoard({
                 key={stage}
                 aria-label={`${kanbanStageLabels[stage]} (${stageApplications.length})`}
                 onDragOver={(event) => {
+                  if (!isOpportunityDrag(event.dataTransfer)) {
+                    return;
+                  }
                   event.preventDefault();
                   // Dragging over the column's padding (not a card) means
                   // "the end of this column".
@@ -479,6 +620,7 @@ function OpportunityCard({
       }}
       onDragStart={(event) => {
         press.current.dragging = true;
+        event.dataTransfer.setData(opportunityDragType, application.id);
         event.dataTransfer.setData("text/plain", application.id);
         event.dataTransfer.effectAllowed = "move";
       }}
@@ -489,6 +631,9 @@ function OpportunityCard({
         onDragFinished();
       }}
       onDragOver={(event) => {
+        if (!isOpportunityDrag(event.dataTransfer)) {
+          return;
+        }
         // Which half of the card the pointer is over decides whether the drop
         // lands above or below it -- the same convention every board UI uses.
         const bounds = event.currentTarget.getBoundingClientRect();

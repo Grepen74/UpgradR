@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApplicationSummary } from "./api";
 import { KanbanBoard, orderAfterDrop } from "./KanbanBoard";
+import { opportunityDragType } from "./lib/opportunityUrl";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -411,7 +412,11 @@ describe("KanbanBoard reordering", () => {
         y: top,
         toJSON: () => ({}),
       }) as DOMRect;
-    fireEvent(card, new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY }));
+    const event = new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY });
+    Object.defineProperty(event, "dataTransfer", {
+      value: { types: [opportunityDragType] },
+    });
+    fireEvent(card, event);
   }
 
   function mockBoardFetch(captured: { url: string; body: string }[]) {

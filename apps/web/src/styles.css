@@ -1771,6 +1771,20 @@ input[type="radio"] {
   background: #5b45d6;
 }
 
+.opportunity-url-drop-cue {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: calc(100vw - 32px);
+  padding: 16px 24px;
+  border: 2px dashed var(--accent-border);
+  border-radius: var(--radius-lg);
+  background: #f6f3ff;
+  pointer-events: none;
+}
+
 .kanban-board {
   display: grid;
   grid-auto-flow: column;
