@@ -447,6 +447,7 @@ function Dashboard({
 
       {tab === "overview" ? (
         <KanbanBoard
+          urlShortcutsEnabled={!selectedApplicationId}
           applications={activeApplications}
           closedCount={closedApplications.length}
           onRefresh={onRefresh}

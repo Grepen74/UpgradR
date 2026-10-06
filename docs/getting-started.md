@@ -42,6 +42,23 @@ filled in:
 The more complete both halves are, the better an agent can judge whether a
 role is actually worth bringing to your attention.
 
+## Add an opportunity yourself
+
+On **Overview**, drag a job-posting link or a URL from your browser's address
+bar onto the page. You can also copy one URL, click outside any editable field,
+and paste with **Cmd+V** (Mac) or **Ctrl+V** (Windows/Linux).
+
+The **Add opportunity** form opens with **Job posting URL** filled in. Complete
+**Role**, **Company**, and optionally **Location**, then click **Save opportunity**.
+UpgradR does not fetch the posting or save automatically. If the form is already
+open, dropping or pasting another URL replaces only the URL, preserving your
+other fields.
+
+Use one HTTP or HTTPS URL at a time; addresses such as
+`www.example.com/jobs/role` also work. Pasting into a field behaves normally.
+Close any opportunity-detail or confirmation dialog before using the shortcut.
+The **Add opportunity** button remains available for manual entry.
+
 ## Step 3 — Unleash an agent to go job-hunting for you
 
 With your profile and search filters in place, you can connect an AI

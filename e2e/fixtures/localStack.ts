@@ -83,6 +83,27 @@ export async function deleteFixtureUser(
   });
 }
 
+/** Signs a local fixture user in through the real Worker without depending on SMTP. */
+export async function signInWithGeneratedLink(
+  page: Page,
+  stack: LocalStack,
+  email: string,
+): Promise<void> {
+  const response = await page.request.post(`${stack.supabaseUrl}/auth/v1/admin/generate_link`, {
+    headers: adminHeaders(stack),
+    data: { type: "magiclink", email },
+  });
+  if (!response.ok()) {
+    throw new Error(`Could not generate fixture sign-in link: ${response.status()} ${await response.text()}`);
+  }
+  const body = (await response.json()) as { hashed_token?: string };
+  if (!body.hashed_token) {
+    throw new Error("Fixture sign-in link was generated without a token hash");
+  }
+  await page.goto(`/api/auth/verify?token_hash=${encodeURIComponent(body.hashed_token)}`);
+  await page.waitForURL((url) => url.pathname === "/");
+}
+
 export type SeedOpportunity = {
   title: string;
   companyName: string;
