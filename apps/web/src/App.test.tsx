@@ -27,6 +27,17 @@ describe("App", () => {
     expect(screen.queryByLabelText(/6-digit code/i)).not.toBeInTheDocument();
   });
 
+  it("links signed-out visitors to the logic test trainer in a new tab", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ user: null }));
+
+    render(<App />);
+
+    const link = await screen.findByRole("link", { name: /open logic test trainer/i });
+    expect(link).toHaveAttribute("href", "/logic-trainer/");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
   it("reveals the code field only after a magic link is successfully sent, then verifies the frozen send-time email even if the field is edited afterward", async () => {
     let signedIn = false;
     const verifyOtpRequests: RequestInit[] = [];
@@ -583,6 +594,10 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /^Follow-ups/ })).toBeVisible();
     });
+
+    const trainerLink = screen.getByRole("link", { name: /logic test trainer/i });
+    expect(trainerLink).toHaveAttribute("href", "/logic-trainer/");
+    expect(trainerLink).toHaveAttribute("target", "_blank");
   });
 
   it("normalizes a browser-style job posting URL before saving an opportunity", async () => {

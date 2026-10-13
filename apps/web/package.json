@@ -6,6 +6,7 @@
   "scripts": {
     "build": "npm run build:client && wrangler deploy --dry-run --outdir dist/worker",
     "build:client": "vite build",
+    "build:logic-trainer": "node logic-trainer/build.mjs",
     "dev": "npm run build:client && wrangler dev",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

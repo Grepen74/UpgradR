@@ -70,6 +70,11 @@ const moreItems: { id: MoreSubTab; label: string; description: string }[] = [
   { id: "muted", label: "Muted sources", description: "Companies and roles that are never proposed again." },
 ];
 
+// Standalone static page built from apps/web/logic-trainer/ (see its README).
+// It runs entirely in the browser and needs no sign-in, so it is linked from
+// both the signed-out landing page and the More hub, opening in a new tab.
+const LOGIC_TRAINER_PATH = "/logic-trainer/";
+
 type ProfileMenuTab = "profile" | "imports" | "account";
 
 // "imports" (the Profile imports tab: bulk LinkedIn CSV / resume-text
@@ -347,6 +352,24 @@ export function App() {
                   {otpMessage ? <StatusMessage>{otpMessage}</StatusMessage> : null}
                 </form>
               ) : null}
+
+              {isConsentRoute ? null : (
+                <aside className="sign-in-card trainer-card" aria-label="Logic test trainer">
+                  <p className="eyebrow">Free practice tool</p>
+                  <p className="trainer-card-copy">
+                    Preparing for a logic test? Practice abstract-reasoning puzzles, timed or
+                    untimed. No sign-in needed.
+                  </p>
+                  <a
+                    className="button secondary"
+                    href={LOGIC_TRAINER_PATH}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open logic test trainer ↗
+                  </a>
+                </aside>
+              )}
             </div>
           </section>
         )}
@@ -583,6 +606,15 @@ function MoreHub({ onSelect }: { onSelect: (id: MoreSubTab) => void }) {
           <span>{entry.description}</span>
         </button>
       ))}
+      <a
+        className="more-hub-item"
+        href={LOGIC_TRAINER_PATH}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <strong>Logic test trainer ↗</strong>
+        <span>Practice abstract-reasoning puzzles, timed or untimed. Opens in a new tab.</span>
+      </a>
     </div>
   );
 }
