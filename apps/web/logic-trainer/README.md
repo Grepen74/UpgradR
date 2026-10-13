@@ -6,7 +6,7 @@ Everything runs in the browser: puzzles are generated client-side, and progress 
 
 ## Features
 
-- **Timed test:** adaptive, up to 20 questions with 2 minutes each. It ends with an estimated 1–10 score and percentile. Scoring uses a 3-parameter IRT model, with the guessing parameter set to 1/6.
+- **Timed test:** adaptive, up to 20 questions with 2 minutes each. It ends with an estimated 1–10 score and a percentile on the model's own bell curve (not a measured population norm). Scoring uses a 3-parameter IRT model, with the guessing parameter set to 1/6.
 - **Untimed practice:** endless newly generated questions at a chosen difficulty, or three fixed 20-question sets. Each answer can be checked, with explanations.
 
 Difficulty values are heuristic estimates and have not been calibrated against real test-takers.
@@ -29,4 +29,4 @@ The built files in `public/logic-trainer/` are committed. After editing anything
 npm run build:logic-trainer --workspace @upgradr/web
 ```
 
-`trainer.test.ts` fails if the committed output is stale. It also checks that the output contains no inline scripts, inline styles or `style=""` attributes, because the site's Content-Security-Policy (`worker/security.ts`) would block them.
+`trainer.test.ts` fails if the committed output is stale. It also checks that the output contains no inline scripts, inline styles or `style=""` attributes, because the site's Content-Security-Policy (`worker/security.ts`) would block them. The page tests boot the built `trainer.js` in jsdom and cover recovery from corrupt saved state, the wall-clock question timer and the accessible answer buttons.
