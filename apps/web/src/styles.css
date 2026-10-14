@@ -211,6 +211,27 @@ p {
   line-height: 1.5;
 }
 
+/* Secondary, lighter-weight card under the sign-in form that links to the
+   standalone logic test trainer (public/logic-trainer/). Smaller padding and
+   shadow keep it visibly subordinate to sign-in. */
+.sign-in-card.trainer-card {
+  gap: 10px;
+  padding: clamp(20px, 3.5vw, 28px);
+  box-shadow: var(--shadow-sm);
+}
+
+.trainer-card-copy {
+  margin: 0;
+  color: #5e6472;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.trainer-card .button {
+  justify-self: start;
+  text-decoration: none;
+}
+
 .sign-in-card {
   display: grid;
   gap: 14px;
@@ -749,6 +770,7 @@ input[type="radio"] {
   color: inherit;
   background: var(--surface-muted);
   text-align: left;
+  text-decoration: none;
   box-shadow: var(--shadow-sm);
   transition:
     border-color var(--motion),
