@@ -60,7 +60,10 @@ describe("logic trainer build", () => {
   });
 });
 
-describe("logic trainer engine", () => {
+// Generator sweeps take ~1s locally but several seconds on slower CI runners.
+const SWEEP_TIMEOUT = 30_000;
+
+describe("logic trainer engine", { timeout: SWEEP_TIMEOUT }, () => {
   it("generates well-formed items in every family", () => {
     for (const family of ENGINE.FAMILIES) {
       let made = 0;
@@ -139,7 +142,7 @@ describe("logic trainer engine", () => {
       ENGINE.hooks.onFinish = (b) => built.push(b);
       for (const fam of ENGINE.FAMILIES) for (const hard of [false, true]) for (let seed = 1; seed <= 200; seed++) ENGINE.make(fam, seed, hard);
       delete ENGINE.hooks.onFinish;
-    });
+    }, SWEEP_TIMEOUT);
 
     it("sees items from every family", () => {
       expect(new Set(built.map((b) => b.fam))).toEqual(new Set(ENGINE.FAMILIES));
@@ -202,7 +205,7 @@ describe("logic trainer engine", () => {
   });
 });
 
-describe("logic trainer run generation", () => {
+describe("logic trainer run generation", { timeout: SWEEP_TIMEOUT }, () => {
   it.each([0.5, 1.5])("spreads families over a 20-question run at difficulty %s", (target) => {
     const rnd = seededRandom(Math.round(target * 1000) + 7);
     const used: string[] = [];
