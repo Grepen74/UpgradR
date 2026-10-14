@@ -6,10 +6,10 @@ Everything runs in the browser: puzzles are generated client-side, and progress 
 
 ## Features
 
-- **Timed test:** adaptive, up to 20 questions with 2 minutes each. It ends with an estimated 1–10 score and a percentile on the model's own bell curve (not a measured population norm). Scoring uses a 3-parameter IRT model, with the guessing parameter set to 1/6.
+- **Timed test:** adaptive, up to 20 questions with 2 minutes each. Questions are spread across the 10 puzzle families: at most 2 per family and none repeated within 3 questions, relaxed only when no other family reaches the target difficulty. It ends with an estimated 1–10 score and a percentile on the model's own bell curve (not a measured population norm). Scoring uses a 3-parameter IRT model, with the guessing parameter set to 1/6.
 - **Untimed practice:** endless newly generated questions at a chosen difficulty, or three fixed 20-question sets. Each answer can be checked, with explanations.
 
-Difficulty values are heuristic estimates and have not been calibrated against real test-takers.
+Difficulty values are heuristic estimates and have not been calibrated against real test-takers. An item's difficulty is the sum of its rules' weights. With three or more rules, the answer options test three of them, each with an option that is wrong only in that rule. A rule that no option tests counts for a third of its weight. Rules on separate, independent elements (such as a clock face colour or a corner dot) add less than rules on the same object.
 
 ## Files
 

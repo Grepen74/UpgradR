@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildFiles, outputDir, sourceDir } from "./build.mjs";
 
@@ -10,8 +10,23 @@ type Engine = {
   FAMILIES: string[];
   make: (family: string, seed: number, hard: boolean) => Item | null;
   fromId: (id: string) => Item;
-  generate: (target: number, options?: { avoid?: string[] }) => Item | null;
+  generate: (target: number, options?: { avoid?: string[]; rnd?: () => number }) => Item | null;
+  generateForRun: (target: number, used?: string[], options?: { rnd?: () => number; tol?: number }) => Item | null;
+  predict: (grid: number[][], options?: { mod?: number; ordinal?: boolean; arith?: boolean }) => Set<number>;
+  hooks: { onFinish?: (built: { fam: string; ans: Record<string, unknown>; options: Record<string, unknown>[]; preds?: { key: string; answer: unknown; values: unknown[] }[]; cells?: Record<string, unknown>[]; rule?: string }) => void };
 };
+
+// Deterministic Math.random replacement (mulberry32) so run simulations are not flaky.
+function seededRandom(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const ENGINE = new Function(`${readFileSync(join(sourceDir, "engine.js"), "utf8")}\nreturn ENGINE;`)() as Engine;
 
@@ -76,6 +91,142 @@ describe("logic trainer engine", () => {
       expect(item).not.toBeNull();
       expectWellFormed(item!);
       expect(Math.abs(item!.b - target)).toBeLessThan(0.8);
+    }
+  });
+
+  it("lets every family reach both easy and hard items", () => {
+    for (const family of ENGINE.FAMILIES) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (let seed = 1; seed <= 150; seed++) {
+        for (const hard of [false, true]) {
+          const item = ENGINE.make(family, seed, hard);
+          if (!item) continue;
+          expectWellFormed(item);
+          min = Math.min(min, item.b);
+          max = Math.max(max, item.b);
+        }
+      }
+      expect(min, `${family} has no easy items`).toBeLessThanOrEqual(-1.2);
+      expect(max, `${family} has no hard items`).toBeGreaterThanOrEqual(2.5);
+    }
+  });
+
+  it("rates watch faces with changing turn steps above simple constant turns", () => {
+    const variable: Item[] = [];
+    const simple: Item[] = [];
+    for (let seed = 1; seed <= 150; seed++) {
+      const item = ENGINE.make("dial", seed, true);
+      if (!item) continue;
+      expectWellFormed(item);
+      if (/doubles along every row|grows with the row/.test(item.rule)) variable.push(item);
+      // Two hands with small constant turns (at most 90°) plus a two-and-one face colour.
+      const steps = [...item.rule.matchAll(/turns (\d+)° (?:anti)?clockwise each column/g)].map((m) => Number(m[1]));
+      if (steps.length === 2 && steps.every((s) => s <= 90) && /clock face colour/.test(item.rule)) simple.push(item);
+    }
+    expect(variable.length).toBeGreaterThan(10);
+    expect(simple.length).toBeGreaterThan(3);
+    for (const item of variable) expect(item.b, item.rule).toBeGreaterThanOrEqual(1.0);
+    for (const item of simple) expect(item.b, item.rule).toBeLessThan(1.75);
+  });
+
+  describe("answer integrity", () => {
+    type Built = { fam: string; ans: Record<string, unknown>; options: Record<string, unknown>[]; preds?: { key: string; answer: unknown; values: unknown[] }[]; cells?: Record<string, unknown>[]; rule?: string };
+    const built: Built[] = [];
+    const key = (v: unknown) => JSON.stringify(v);
+
+    beforeAll(() => {
+      ENGINE.hooks.onFinish = (b) => built.push(b);
+      for (const fam of ENGINE.FAMILIES) for (const hard of [false, true]) for (let seed = 1; seed <= 200; seed++) ENGINE.make(fam, seed, hard);
+      delete ENGINE.hooks.onFinish;
+    });
+
+    it("sees items from every family", () => {
+      expect(new Set(built.map((b) => b.fam))).toEqual(new Set(ENGINE.FAMILIES));
+      // Some items test three rules at once, so the three-rule option layout is covered too.
+      const tested = (b: Built) => Object.keys(b.ans).filter((k) => new Set(b.options.map((o) => key(o[k]))).size > 1).length;
+      expect(built.some((b) => tested(b) >= 3)).toBe(true);
+    });
+
+    it("never makes the answer the most common value of any attribute among the options", () => {
+      for (const b of built) {
+        for (const k of Object.keys(b.ans)) {
+          const counts = new Map<string, number>();
+          for (const o of b.options) counts.set(key(o[k]), (counts.get(key(o[k])) ?? 0) + 1);
+          const answerCount = counts.get(key(b.ans[k])) ?? 0;
+          const others = [...counts].filter(([v]) => v !== key(b.ans[k])).map(([, n]) => n);
+          if (others.length) expect(answerCount, `${b.fam}.${k}`).toBeLessThanOrEqual(Math.max(...others));
+        }
+      }
+    });
+
+    it("lets every rule lead to exactly one value, the answer's", () => {
+      const checked = built.filter((b) => b.preds);
+      expect(checked.length).toBeGreaterThan(1000);
+      for (const b of checked) for (const p of b.preds ?? []) expect(p.values.map(key), `${b.fam}.${p.key}`).toEqual([key(p.answer)]);
+    });
+
+    it("does not let dots in neighbouring quadrants cancel to a different answer", () => {
+      // Quadrant dot items store p (+ one quadrant, - the opposite) and q (the other diagonal). Cancelling neighbouring
+      // quadrants instead (e.g. top-left against top-right) must never also explain rows 1-2 yet predict another figure.
+      const quadItems = built.filter((b) => b.fam === "sides" && /quadrant/.test(b.rule ?? ""));
+      expect(quadItems.length).toBeGreaterThan(50);
+      for (const b of quadItems) {
+        const grid = [...(b.cells ?? []), b.ans].map((c) => {
+          const p = c.p as number, q = c.q as number;
+          return [Math.max(q, 0), Math.max(-p, 0), Math.max(-q, 0), Math.max(p, 0)];
+        });
+        const at = (r: number, c: number, transpose: boolean) => grid[transpose ? c * 3 + r : r * 3 + c] ?? [];
+        for (const pairs of [[[0, 1], [2, 3]], [[0, 3], [1, 2]]]) {
+          for (const transpose of [false, true]) {
+            const net = (r: number, c: number, [i, j]: number[]) => (at(r, c, transpose)[i ?? 0] ?? 0) - (at(r, c, transpose)[j ?? 0] ?? 0);
+            const fits = pairs.every((pair) => [0, 1].every((r) => net(r, 0, pair) + net(r, 1, pair) === net(r, 2, pair)));
+            if (!fits) continue;
+            const rival = [0, 0, 0, 0];
+            for (const [i = 0, j = 0] of pairs) {
+              const n = net(2, 0, [i, j]) + net(2, 1, [i, j]);
+              rival[i] = Math.max(n, 0);
+              rival[j] = Math.max(-n, 0);
+            }
+            expect(rival, b.rule).toEqual(grid[8]);
+          }
+        }
+      }
+    });
+
+    it("recognises both readings of an ambiguous number grid", () => {
+      // 1+2=3 and 2+1=3 fit addition (answer 4), but each row is also a permutation of 1,2,3 (answer 2).
+      const grid = [[1, 2, 3], [2, 1, 3], [3, 1, 0]];
+      expect([...ENGINE.predict(grid, { ordinal: true, arith: true })].sort()).toEqual([2, 4]);
+    });
+  });
+});
+
+describe("logic trainer run generation", () => {
+  it.each([0.5, 1.5])("spreads families over a 20-question run at difficulty %s", (target) => {
+    const rnd = seededRandom(Math.round(target * 1000) + 7);
+    const used: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      const item = ENGINE.generateForRun(target, used, { rnd });
+      expect(item).not.toBeNull();
+      expectWellFormed(item!);
+      expect(Math.abs(item!.b - target)).toBeLessThanOrEqual(0.5);
+      expect(used.slice(-3), `${item!.fam} repeated within 4 questions`).not.toContain(item!.fam);
+      used.push(item!.fam);
+    }
+    const counts = Object.values(used.reduce<Record<string, number>>((c, f) => ({ ...c, [f]: (c[f] ?? 0) + 1 }), {}));
+    expect(Math.max(...counts)).toBeLessThanOrEqual(2);
+    expect(counts).toHaveLength(ENGINE.FAMILIES.length);
+  });
+
+  it("still returns an item when every family is used up", () => {
+    const rnd = seededRandom(42);
+    const twice = [...ENGINE.FAMILIES, ...ENGINE.FAMILIES];
+    const fourTimes = [...twice, ...twice];
+    for (const used of [twice, fourTimes]) {
+      const item = ENGINE.generateForRun(1, used, { rnd });
+      expect(item).not.toBeNull();
+      expectWellFormed(item!);
     }
   });
 });

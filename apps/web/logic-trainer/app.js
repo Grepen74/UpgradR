@@ -102,11 +102,10 @@ const level = id => Math.min(10, Math.max(1, Math.round(stenRaw(item(id).b))));
 function pickNext() {
   const t = S.order.length ? estimate(S.order, S.resp).theta : -0.5;
   if (S.src === 'new') {
-    // Generated run: target the current ability estimate, never repeat a family back-to-back, max 4 per family.
-    const fams = S.order.map(id => item(id).fam), count = f => fams.filter(x => x === f).length;
-    const avoid = ENGINE.FAMILIES.filter(f => f === fams[fams.length - 1] || count(f) >= 4);
+    // Generated run: target the current ability estimate while spreading families (see ENGINE.generateForRun).
     const target = Math.max(-2.4, Math.min(3.0, t + (Math.random() - 0.5) * 0.5));
-    return freshItem(target, avoid);
+    const it = ENGINE.generateForRun(target, S.order.map(id => item(id).fam)) || ENGINE.generate(target);
+    GEN_CACHE.set(it.id, it); return it.id;
   }
   const used = new Set(S.order), fams = new Set(S.order.map(id => ITEMS[id].fam)), seen = new Set(loadSeen());
   const cand = ITEMS.map((it, id) => ({ id, v: info(t, it.b) * (seen.has(id) ? 0.5 : 1) }))
