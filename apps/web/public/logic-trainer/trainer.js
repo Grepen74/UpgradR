@@ -93,12 +93,25 @@ const ENGINE = (() => {
     return out;
   }
 
-  // Options: answer, sec(answer), prim1, sec(prim1), prim2, sec(prim2). Every attribute value appears in
-  // exactly 2 or 3 options, so the answer is never "the most common value" for any attribute.
-  function finish(R, { fam, points, cells, ans, prim, sec, render, consistent, valid, rule }) {
+  // Options: answer, sec(answer), prim1, sec(prim1), prim2, sec(prim2). Each primary value appears in exactly 2
+  // options and each secondary value in 3, so the answer is never "the most common value" for any attribute.
+  // Test hooks: let the tests inspect every built item's options and rule predictions.
+  const hooks = {};
+
+  function finish(R, { fam, points, cells, ans, prim, sec, ter, render, consistent, valid, rule, preds }) {
     if (!prim || prim.length < 2 || !sec) return null;
-    const opts = [];
-    for (const p of [null, prim[0], prim[1]]) {
+    let opts = [];
+    if (ter) {
+      // Three tested rules, as (primary, secondary, third) choices with 0 = correct: 000 010 101 111 201 210.
+      // Each primary value is in 2 options and each secondary/third value in 3, so no rule can be skipped by counting.
+      opts = [[0, 0, 0], [0, 1, 0], [1, 0, 1], [1, 1, 1], [2, 0, 1], [2, 1, 0]].map(([p, s, t]) => {
+        let at = p ? prim[p - 1].apply(ans) : ans;
+        const why = p ? [prim[p - 1].why] : [];
+        if (s) { why.push(sec.why(at)); at = sec.apply(at); }
+        if (t) { why.push(ter.why(at)); at = ter.apply(at); }
+        return { at, why: why.length ? why.join(' ') : null };
+      });
+    } else for (const p of [null, prim[0], prim[1]]) {
       const base = p ? p.apply(ans) : ans;
       opts.push({ at: base, why: p ? p.why : null });
       const s = sec.apply(base);
@@ -108,6 +121,7 @@ const ENGINE = (() => {
     if (!consistent(ans) || opts.slice(1).some(o => consistent(o.at))) return null;
     const svgs = opts.map(o => render(o.at));
     if (new Set(svgs).size !== 6) return null;
+    if (hooks.onFinish) hooks.onFinish({ fam, ans, options: opts.map(o => o.at), preds, cells, rule });
     const cellSvgs = cells.map(render);
     const order = R.shuffle([0, 1, 2, 3, 4, 5]);
     return {
@@ -136,7 +150,7 @@ const ENGINE = (() => {
       const alts = [{ v: a === A ? B : A, why: a === A ? `Row 3 already has its one ${nm(B)}; ${text}` : `Row 3 already has two ${nm(A)}; ${text}` }];
       const un = domain.filter(x => x !== A && x !== B);
       if (un.length) { const x = R.pick(un); alts.push({ v: x, why: `${cap(nm(x))} never appears in the pattern. ${text}` }); }
-      return { key, grid, varying: true, struct, w: 0.8, text, alts };
+      return { key, grid, varying: true, struct, w: domain.length === 2 ? 0.45 : 0.8, text, alts };
     }
     const vals = R.sample(domain, 3), grid = STRUCT[struct](vals), a = ansOf(grid);
     const unused = domain.filter(x => !vals.includes(x));
@@ -156,7 +170,7 @@ const ENGINE = (() => {
   }
 
   // Numeric attribute (counts, polygon sides): progression, Latin, row/col, arithmetic.
-  function numAttr(R, key, label, nm, lo, hi, struct) {
+  function numAttr(R, key, label, nm, lo, hi, struct, plural = 'counts') {
     let grid, text, alts = [], w;
     const ok = x => x >= lo && x <= hi;
     if (struct === 'const') {
@@ -182,26 +196,30 @@ const ENGINE = (() => {
         { v: a + (R.chance(0.5) ? 1 : -1) * (Math.abs(d) === 1 ? 2 : 1), why: `Count again: the ${label} changes by ${sgn} per step (${seq}).` },
       ].filter(x => ok(x.v) && x.v !== a);
       w = 0.75 + (Math.abs(d) === 2 ? 0.2 : 0) + (d < 0 ? 0.15 : 0) + (e !== d && e !== 0 ? 0.1 : 0);
-    } else if (struct === 'arith') {
+    } else if (struct === 'arith' || struct === 'carith') {
       const plus = R.chance(0.6), rows = [];
       for (let r = 0; r < 3; r++) {
         let x, y;
-        if (plus) { x = R.int(1, 4); y = R.int(1, Math.min(4, hi - x)); } else { x = R.int(3, hi); y = R.int(1, x - 1); }
+        if (plus) { x = R.int(lo, Math.min(lo + 3, hi - lo)); y = R.int(lo, Math.min(lo + 3, hi - x)); } else { x = R.int(2 * lo + 1, hi); y = R.int(lo, x - lo); }
         rows.push([x, y, plus ? x + y : x - y]);
       }
       if (new Set(rows.map(String)).size < 3 || rows.some(rw => rw[0] === rw[1])) return null;
-      grid = rows;
+      // Column arithmetic (row 3 = row 1 op row 2) is the same rule turned 90°, which is less salient.
+      const byCol = struct === 'carith';
+      grid = byCol ? G((r, c) => rows[c][r]) : rows;
       const [x, y, a] = rows[2], op = plus ? '+' : '−';
-      text = `In every row, column 3 = column 1 ${op} column 2 (row 3: ${x} ${op} ${y} = ${a}).`;
+      const eq = byCol ? `In every column, the ${label} in row 3 = row 1 ${op} row 2` : `In every row, the ${label} in column 3 = column 1 ${op} column 2`;
+      text = `${eq} (${byCol ? 'column' : 'row'} 3: ${x} ${op} ${y} = ${a}).`;
+      const fix = `${eq.replace('In every', 'in every')}, so ${x} ${op} ${y} = ${a}.`;
       alts = [
-        { v: plus ? x - y : x + y, why: `Wrong operation: column 3 = column 1 ${op} column 2, so ${x} ${op} ${y} = ${a}.` },
-        { v: a + 1, why: `Off by one: column 3 = column 1 ${op} column 2, so ${x} ${op} ${y} = ${a}.` },
-        { v: a - 1, why: `Off by one: column 3 = column 1 ${op} column 2, so ${x} ${op} ${y} = ${a}.` },
+        { v: plus ? x - y : x + y, why: `Wrong operation: ${fix}` },
+        { v: a + 1, why: `Off by one: ${fix}` },
+        { v: a - 1, why: `Off by one: ${fix}` },
       ].filter(o => ok(o.v) && o.v !== a);
-      w = 1.55;
+      w = byCol ? 1.8 : 1.55;
     } else {
       const vals = R.sample(Array.from({ length: hi - lo + 1 }, (_, i) => lo + i), 3);
-      const at = catAttr(R, key, label, 'counts', nm, vals, struct);
+      const at = catAttr(R, key, label, plural, nm, vals, struct);
       at.alts = at.alts.filter(o => vals.includes(o.v));
       const x = R.pick([at.grid[2][2] + 1, at.grid[2][2] - 1].filter(v => ok(v) && !vals.includes(v)));
       if (x !== undefined) at.alts.push({ v: x, why: `The ${label} is ${nm(x)}, which never appears; ${at.text}` });
@@ -216,7 +234,11 @@ const ENGINE = (() => {
     const ans = Object.fromEntries(attrs.map(a => [a.key, a.grid[2][2]]));
     const cells = CELLS.map(([r, c]) => Object.fromEntries(attrs.map(a => [a.key, a.grid[r][c]])));
     const P = Object.fromEntries(attrs.map(a => [a.key, a.preds || predict(a.grid, a.o || {})]));
+    // Every rule must point to exactly one value: a grid that also fits another reading has two right answers.
+    if (attrs.some(a => P[a.key].size !== 1 || !P[a.key].has(ans[a.key]))) return null;
     const consistent = at => attrs.every(a => P[a.key].has(at[a.key]));
+    // Drop wrong values that would make an impossible figure (e.g. two markers on the same spot).
+    if (valid) for (const a of attrs) a.alts = a.alts.filter(o => valid({ ...ans, [a.key]: o.v }));
     const vary = attrs.filter(a => a.varying);
     const primC = vary.filter(a => a.alts.length >= 2);
     if (!primC.length) return null;
@@ -228,14 +250,24 @@ const ENGINE = (() => {
     const mk = (a, alt) => ({ apply: at => ({ ...at, [a.key]: alt.v }), why: () => alt.why });
     const prim = R.sample(pa.alts, 2).map(alt => ({ apply: at => ({ ...at, [pa.key]: alt.v }), why: alt.why }));
     const salt = R.pick(sa.alts), sec = { ...mk(sa, salt), join: true };
-    const points = vary.reduce((s, a) => s + a.w, 0) + 0.35 * Math.max(0, vary.length - 1) + extraPoints;
+    // A third rule, when there is one, gets its own wrong options so it has to be solved as well.
+    const taC = vary.filter(a => a !== pa && a !== sa && a.alts.length);
+    const ta = taC.length ? R.pick(taC) : null, ter = ta ? mk(ta, R.pick(ta.alts)) : null;
+    // Each extra rule adds 0.35, but only 0.15 when it lives on its own, visually separate element (`sep`):
+    // those can be solved independently, so they add less than rules that share an object.
+    // Rules that no option tests (all six options agree on them) only count a third: they distract but need not be solved.
+    const tested = vary.filter(a => a === pa || a === sa || a === ta), untested = vary.filter(a => !tested.includes(a));
+    const nSep = tested.filter(a => a.sep).length, nJoint = tested.length - nSep;
+    const combo = 0.35 * Math.max(0, nJoint - 1) + 0.15 * (nJoint ? nSep : Math.max(0, nSep - 1));
+    const points = tested.reduce((s, a) => s + a.w, 0) + untested.reduce((s, a) => s + a.w / 3, 0) + combo + extraPoints;
     const rule = vary.map(a => a.text).join(' ') + ` Answer: ${answerText(ans)}.`;
-    return finish(R, { fam, points, cells, ans, prim, sec, render, consistent, valid, rule });
+    const preds = attrs.map(a => ({ key: a.key, answer: ans[a.key], values: [...P[a.key]] }));
+    return finish(R, { fam, points, cells, ans, prim, sec, ter, render, consistent, valid, rule, preds });
   }
 
   const pickStructs = (R, attrs, k, must) => {
     // attrs: [{key, structs}] -> assign k distinct structure kinds; others const
-    const chosen = new Set(must ? [must] : []);
+    const chosen = new Set(must ? [].concat(must) : []);
     while (chosen.size < k) chosen.add(R.pick(attrs).key);
     const used = new Set(), out = {};
     for (const a of R.shuffle(attrs)) {
@@ -255,27 +287,37 @@ const ENGINE = (() => {
   const sName = s => s === 'cross' ? 'plus' : s;
   const noSqDi = R => d => { const x = R.chance(0.5) ? 'square' : 'diamond'; return d.filter(s => s !== x); };
   const FILLS = ['white', 'grey', 'black'], SIZES = [12, 19, 27], SIZEN = ['small', 'medium', 'large'];
-  const kVary = R => R.hard ? 3 : +R.weighted({ 1: 3, 2: 4, 3: 3 });
+  // Hard items vary 3 attributes, or 4 when the family has an optional fourth attribute in play.
+  const kVary = (R, n = 3) => R.hard ? (n > 3 ? +R.weighted({ 3: 1, 4: 3 }) : 3) : Math.min(n, +R.weighted({ 1: 3, 2: 4, 3: 3 }));
+
+  // Optional fourth attribute: a small dot in one of the cell's corners.
+  const CORNP = [[14, 14], [86, 14], [14, 86], [86, 86]], CORNN = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+  const cornerDot = i => `<circle cx="${CORNP[i][0]}" cy="${CORNP[i][1]}" r="5" fill="${INK}"/>`;
 
   function genSingle(R) {
-    const sides = R.chance(0.3);
+    const sides = R.chance(R.hard ? 0.45 : 0.3), useMark = R.chance(R.hard ? 0.75 : 0.12);
     const defs = [{ key: 'shape', structs: sides ? ['prog'] : ['row', 'col', 'lat1', 'lat2'] },
       { key: 'fill', structs: ['row', 'col', 'lat1', 'lat2', 'two'] }, { key: 'size', structs: ['row', 'col', 'lat1', 'lat2', 'two'] }];
-    const st = pickStructs(R, defs, kVary(R), sides ? 'shape' : null);
+    if (useMark) defs.push({ key: 'mark', structs: ['row', 'col', 'lat1', 'lat2', 'two'] });
+    const st = pickStructs(R, defs, kVary(R, defs.length), [...(sides ? ['shape'] : []), ...(useMark ? ['mark'] : [])]);
     if (!st) return null;
-    const shp = sides ? numAttr(R, 'shape', 'number of sides', x => `${POLY[x]} (${x})`, 3, 8, st.shape === 'const' ? 'const' : 'prog')
+    const shp = sides ? numAttr(R, 'shape', 'number of sides', x => `${POLY[x]} (${x})`, 3, 8, st.shape === 'const' ? 'const' : R.hard && R.chance(0.55) ? 'arith' : 'prog')
       : catAttr(R, 'shape', 'shape', 'shapes', sName, noSqDi(R)(SHAPES), st.shape);
-    if (sides && shp) shp.w += 0.3;
+    if (sides && shp) shp.w += shp.struct === 'arith' ? 0.5 : 0.3; // counting sides of 7- and 8-gons is slow
     const fill = catAttr(R, 'fill', 'colour', 'colours', x => x, FILLS, st.fill);
     const size = catAttr(R, 'size', 'size', 'sizes', i => SIZEN[i], [0, 1, 2], st.size);
+    const mark = useMark ? catAttr(R, 'mark', 'dot position', 'dot positions', i => CORNN[i], [0, 1, 2, 3], st.mark) : null;
+    if (mark) mark.sep = true;
     const shapeOf = at => sides ? POLY[at.shape] : at.shape;
-    return buildFromAttrs(R, 'single', [shp, fill, size], at => shape(shapeOf(at), 50, 50, SIZES[at.size], at.fill), 0,
-      at => `a ${SIZEN[at.size]} ${at.fill} ${sName(shapeOf(at))}`);
+    return buildFromAttrs(R, 'single', [shp, fill, size, ...(useMark ? [mark] : [])],
+      at => shape(shapeOf(at), 50, 50, SIZES[at.size], at.fill) + (useMark ? cornerDot(at.mark) : ''), 0,
+      at => `a ${SIZEN[at.size]} ${at.fill} ${sName(shapeOf(at))}` + (useMark ? ` with the dot in the ${CORNN[at.mark]} corner` : ''));
   }
 
   function genCount(R) {
-    const defs = [{ key: 'count', structs: R.hard ? ['prog', 'arith', 'arith'] : ['prog', 'prog', 'arith', 'row', 'col', 'lat1', 'lat2'] },
-      { key: 'shape', structs: ['row', 'col', 'lat1', 'lat2'] }, { key: 'fill', structs: ['row', 'col', 'lat1', 'lat2'] }];
+    const defs = R.hard
+      ? [{ key: 'count', structs: ['prog', 'arith', 'arith', 'carith'] }, { key: 'shape', structs: ['row', 'lat1', 'lat2'] }, { key: 'fill', structs: ['col', 'lat1', 'lat2', 'two'] }]
+      : [{ key: 'count', structs: ['prog', 'prog', 'arith', 'row', 'col', 'lat1', 'lat2'] }, { key: 'shape', structs: ['row', 'col', 'lat1', 'lat2'] }, { key: 'fill', structs: ['row', 'col', 'lat1', 'lat2'] }];
     const st = pickStructs(R, defs, kVary(R), 'count');
     if (!st) return null;
     const cnt = numAttr(R, 'count', 'number of shapes', x => String(x), 1, 9, st.count);
@@ -286,17 +328,30 @@ const ENGINE = (() => {
       at => `${at.count} ${at.fill} ${sName(at.shape)}${at.count > 1 ? (at.shape === 'cross' ? ' signs' : 's') : ''}`);
   }
 
+  // Inner-shape positions for 1-4 inner shapes: [x, y] list and radius, inside a triangle or any other outer shape.
+  const INPOS = {
+    tri: { 1: [[[50, 58]], 9], 2: [[[40, 63], [60, 63]], 6.5], 3: [[[50, 48], [41, 65], [59, 65]], 5.5], 4: [[[42, 55], [58, 55], [42, 70], [58, 70]], 5] },
+    other: { 1: [[[50, 50]], 11], 2: [[[39, 50], [61, 50]], 8], 3: [[[50, 39], [38.5, 59], [61.5, 59]], 7], 4: [[[40, 40], [60, 40], [40, 60], [60, 60]], 6.5] },
+  };
+  const NUMW = ['', 'one', 'two', 'three', 'four'];
   function genInOut(R) {
+    const useNum = R.chance(R.hard ? 0.75 : 0.12);
     const defs = [{ key: 'outer', structs: ['row', 'col', 'lat1', 'lat2'] }, { key: 'inner', structs: ['row', 'col', 'lat1', 'lat2', 'two'] },
       { key: 'fill', structs: ['row', 'col', 'lat1', 'lat2', 'two'] }];
-    const st = pickStructs(R, defs, kVary(R), null);
+    if (useNum) defs.push({ key: 'num', structs: ['row', 'col', 'lat1', 'lat2', 'two'] });
+    const st = pickStructs(R, defs, kVary(R, defs.length), useNum ? 'num' : null);
     if (!st) return null;
     const outer = catAttr(R, 'outer', 'outer shape', 'outer shapes', sName, noSqDi(R)(['circle', 'square', 'hexagon', 'pentagon', 'diamond', 'triangle']), st.outer);
     const inner = catAttr(R, 'inner', 'inner shape', 'inner shapes', sName, noSqDi(R)(SMALL), st.inner);
     const fill = catAttr(R, 'fill', 'inner colour', 'inner colours', x => x, FILLS, st.fill);
-    return buildFromAttrs(R, 'inout', [outer, inner, fill],
-      at => shape(at.outer, 50, 50, 33, 'white') + shape(at.inner, 50, at.outer === 'triangle' ? 58 : 50, at.outer === 'triangle' ? 9 : 11, at.fill), 0.15,
-      at => `a ${sName(at.outer)} with a ${at.fill} ${sName(at.inner)} inside`);
+    // Hard: the number of inner shapes may follow an addition/subtraction rule (1-4 shapes) instead of a pattern.
+    const num = !useNum ? null : R.hard && st.num !== 'const' && R.chance(0.5) ? numAttr(R, 'num', 'number of inner shapes', String, 1, 4, 'arith')
+      : catAttr(R, 'num', 'number of inner shapes', 'numbers of inner shapes', String, [1, 2, 3], st.num);
+    if (num && num.struct !== 'arith') num.o = { ordinal: true };
+    const plural = (at, k) => k > 1 ? (at.inner === 'cross' ? 'plus signs' : `${sName(at.inner)}s`) : sName(at.inner);
+    return buildFromAttrs(R, 'inout', [outer, inner, fill, ...(num ? [num] : [])],
+      at => { const [P, r] = INPOS[at.outer === 'triangle' ? 'tri' : 'other'][at.num || 1]; return shape(at.outer, 50, 50, 33, 'white') + P.map(([x, y]) => shape(at.inner, x, y, r, at.fill)).join(''); }, 0.15,
+      at => `a ${sName(at.outer)} with ${at.num > 1 ? NUMW[at.num] : 'a'} ${at.fill} ${plural(at, at.num || 1)} inside`);
   }
 
   // ------------------------------------------------------------ family: markers moving around a frame
@@ -304,8 +359,7 @@ const ENGINE = (() => {
   const SLOTN = ['top-left corner', 'top middle', 'top-right corner', 'right middle', 'bottom-right corner', 'bottom middle', 'bottom-left corner', 'left middle'];
   const DIRN = ['up', 'up-right', 'right', 'down-right', 'down', 'down-left', 'left', 'up-left'];
 
-  function cyclic(R, key, label, n, d, posName, V) {
-    const starts = R.sample([0, 1, 2, 3, 4, 5, 6, 7], 3);
+  function cyclic(R, key, label, n, d, posName, V, starts = R.sample([0, 1, 2, 3, 4, 5, 6, 7], 3)) {
     const grid = G((r, c) => ((starts[r] + d * c) % n + n) % n);
     const N = x => ((x % n) + n) % n, g = grid[2], a = g[2];
     const k = Math.abs(d), dir = d > 0 ? 'clockwise' : 'anticlockwise', other = d > 0 ? 'anticlockwise' : 'clockwise';
@@ -319,6 +373,30 @@ const ENGINE = (() => {
     ].filter((o, i, arr) => o.v !== a && arr.findIndex(p => p.v === o.v) === i);
     return { key, grid, varying: true, w: 0.7 + 0.25 * (k - 1) + (d < 0 ? 0.2 : 0), text, alts, o: { ordinal: true, mod: n } };
   }
+  // A turning hand whose step is not constant, so the solver has to find a rule for the step itself.
+  // 'grow': the turn doubles along every row (d, then 2d). 'row': the turn is d × row number in every column.
+  function cyclicVar(R, key, label, n, d, kind, posName, V) {
+    const N = x => ((x % n) + n) % n, starts = R.sample([0, 1, 2, 3, 4, 5, 6, 7], 3);
+    const off = (r, c) => kind === 'grow' ? d * [0, 1, 3][c] : d * (r + 1) * c;
+    const grid = G((r, c) => N(starts[r] + off(r, c))), g = grid[2], a = g[2];
+    const k = Math.abs(d), dir = d > 0 ? 'clockwise' : 'anticlockwise';
+    const text = kind === 'grow'
+      ? `The ${label} ${V.verb} ${dir}, and the turn doubles along every row: ${V.step(k)} into column 2, then ${V.step(2 * k)} into column 3.`
+      : `The ${label} ${V.verb} ${dir} every column, by a step that grows with the row: ${V.step(k)} in row 1, ${V.step(2 * k)} in row 2, so ${V.step(3 * k)} in row 3.`;
+    const alts = (kind === 'grow' ? [
+      { v: N(g[1] + d), why: `The turn is not constant: it doubles to ${V.step(2 * k)} from column 2 to column 3. ${text}` },
+      { v: g[1], why: `The ${label} did not ${V.base} here. ${text}` },
+      { v: N(a + d), why: `The ${label} ${V.past} too far. ${text}` },
+      { v: N(g[1] - 2 * d), why: `The ${label} ${V.past} the wrong way. ${text}` },
+    ] : [
+      { v: N(g[1] + 2 * d), why: `This uses row 2's step. Row 3 turns ${V.step(3 * k)} each column. ${text}` },
+      { v: N(g[1] + d), why: `This uses row 1's step. Row 3 turns ${V.step(3 * k)} each column. ${text}` },
+      { v: g[1], why: `The ${label} did not ${V.base} here. ${text}` },
+      { v: N(g[1] - 3 * d), why: `The ${label} ${V.past} the wrong way. ${text}` },
+    ]).filter((o, i, arr) => o.v !== a && arr.findIndex(p => p.v === o.v) === i);
+    const preds = new Set([...predict(grid, { ordinal: true, mod: n }), a]);
+    return { key, grid, varying: true, w: (kind === 'grow' ? 1.5 : 1.7) + (d < 0 ? 0.15 : 0), text, alts, preds };
+  }
 
   const MOVE_V = { verb: 'moves', base: 'move', past: 'moved', off: 'one position', step: k => `${k} position${k > 1 ? 's' : ''}` };
   const TURN_V = { verb: 'turns', base: 'turn', past: 'turned', off: '45°', step: k => `${45 * k}°` };
@@ -327,18 +405,35 @@ const ENGINE = (() => {
     { label: 'white square', draw: (x, y) => shape('square', x, y, 9, 'white') },
     { label: 'grey triangle', draw: (x, y) => shape('triangle', x, y, 9.5, 'grey') },
   ];
+  // Picks each row's start positions for several movers (steps `ds` around 8 positions) so that no two of them
+  // share a position in any cell, then builds their attributes with mk(index, starts).
+  function cyclicSet(R, ds, mk) {
+    const S = ds.map(() => []), N = x => ((x % 8) + 8) % 8;
+    for (let r = 0; r < 3; r++) {
+      let ok = false;
+      for (let t = 0; t < 40 && !ok; t++) {
+        const cand = ds.map(() => R.int(0, 7));
+        ok = cand.every((x, i) => !S[i].includes(x)) && [0, 1, 2].every(c => new Set(cand.map((x, i) => N(x + ds[i] * c))).size === ds.length);
+        if (ok) cand.forEach((x, i) => S[i].push(x));
+      }
+      if (!ok) return null;
+    }
+    return ds.map((d, i) => mk(i, S[i]));
+  }
   function genMove(R) {
-    const m = R.hard ? 3 : +R.weighted({ 1: 3, 2: 5, 3: 1 }), mk = R.sample(MARKERS, m);
-    const attrs = mk.map((M, i) => cyclic(R, 'm' + i, M.label, 8, R.pick([1, 1, 2, 3, -1, -2]), p => `in the ${SLOTN[p]}`, MOVE_V));
+    // Hard: three markers, or two markers plus a centre shape with its own rule, with larger and backward steps.
+    const m = R.hard ? +R.weighted({ 2: 3, 3: 2 }) : +R.weighted({ 1: 3, 2: 5, 3: 1 }), mk = R.sample(MARKERS, m);
+    const steps = mk.map(() => R.pick(R.hard ? [1, 1, 2, 3, -1, -2, -3] : [1, 1, 2, 3, -1, -2]));
+    const attrs = cyclicSet(R, steps, (i, st) => cyclic(R, 'm' + i, mk[i].label, 8, steps[i], p => `in the ${SLOTN[p]}`, MOVE_V, st));
+    if (!attrs) return null;
     const bg = `<rect x="8" y="8" width="84" height="84" rx="4" fill="none" stroke="${GUIDE}" stroke-width="2"/>` + SLOTS.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3" fill="${GUIDE}"/>`).join('');
     let extra = 0.5 * (m - 1);
-    if (m === 1) {
-      // Single marker: add a second rule on the marker's size or the number of markers? Keep it simple: colour of the frame centre.
-      const st = R.pick(['row', 'col', 'lat1', 'lat2', 'const']);
-      attrs.push(catAttr(R, 'c', 'centre shape', 'centre shapes', sName, ['circle', 'square', 'triangle', 'star', 'diamond'], st));
+    if (m === 1 || (m === 2 && (R.hard || R.chance(0.35)))) {
+      // A shape in the frame's centre follows its own, unrelated rule.
+      const st = R.pick(m === 1 ? ['row', 'col', 'lat1', 'lat2', 'const'] : R.hard ? ['lat1', 'lat2', 'two'] : ['row', 'col', 'lat1']);
+      attrs.push({ ...catAttr(R, 'c', 'centre shape', 'centre shapes', sName, ['circle', 'square', 'triangle', 'star', 'diamond'], st), sep: true });
     }
     const valid = at => new Set(mk.map((_, i) => at['m' + i])).size === m;
-    if (![...CELLS, [2, 2]].every(([r, c]) => valid(Object.fromEntries(attrs.map(a => [a.key, a.grid[r][c]]))))) return null;
     return buildFromAttrs(R, 'move', attrs,
       at => bg + (at.c ? shape(at.c, 50, 50, 10, 'white') : '') + mk.map((M, i) => M.draw(...SLOTS[at['m' + i]])).join(''), extra,
       at => mk.map((M, i) => `${M.label} in the ${SLOTN[at['m' + i]]}`).join(', ') + (at.c ? `, ${sName(at.c)} in the centre` : ''), valid);
@@ -349,15 +444,32 @@ const ENGINE = (() => {
     const clock = R.hard || R.chance(0.5), attrs = [];
     let render, answer, extra = 0, valid;
     if (clock) {
-      attrs.push(cyclic(R, 'h1', 'long hand', 8, R.pick([1, 1, 2, 3, -1, -2]), p => `pointing ${DIRN[p]}`, TURN_V));
-      attrs.push(cyclic(R, 'h2', 'short hand', 8, R.pick([1, 2, -1, -2, -3]), p => `pointing ${DIRN[p]}`, TURN_V));
-      if (attrs[0].grid.flat().join() === attrs[1].grid.flat().join()) return null;
+      const d1 = R.pick(R.hard ? [1, 2, 3, -1, -2, -3] : [1, 1, 2, 3, -1, -2]), d2 = R.pick([1, 2, -1, -2, -3]);
+      const label = i => i ? 'short hand' : 'long hand', pos = p => `pointing ${DIRN[p]}`;
+      // Hard: often one hand turns by a changing step instead of a constant one.
+      const varHand = R.hard && R.chance(0.55) ? R.int(0, 1) : -1;
+      let hands = null;
+      if (varHand < 0) hands = cyclicSet(R, [d1, d2], (i, st) => cyclic(R, 'h' + (i + 1), label(i), 8, i ? d2 : d1, pos, TURN_V, st));
+      else {
+        const [dv, kind] = R.pick([[1, 'grow'], [2, 'grow'], [-1, 'grow'], [1, 'row'], [-1, 'row']]);
+        // Re-draw the starting positions until the two hands never overlap in any cell.
+        for (let t = 0; t < 30 && !hands; t++) {
+          const hs = [0, 1].map(i => i === varHand
+            ? cyclicVar(R, 'h' + (i + 1), label(i), 8, dv, kind, pos, TURN_V)
+            : cyclic(R, 'h' + (i + 1), label(i), 8, i ? d2 : d1, pos, TURN_V));
+          if (CELLS.concat([[2, 2]]).every(([r, c]) => hs[0].grid[r][c] !== hs[1].grid[r][c])) hands = hs;
+        }
+      }
+      if (!hands) return null;
+      attrs.push(...hands);
+      // Hard: the clock face is shaded by a separate two-and-one rule that has nothing to do with the hands.
+      if (R.chance(R.hard ? (varHand < 0 ? 0.7 : 0.35) : 0.15)) attrs.push({ ...catAttr(R, 'face', 'clock face colour', 'colours', x => x, ['white', 'grey'], 'two'), sep: true });
       const hand = (a, L, sw) => { const t = (a * 45 - 90) * Math.PI / 180; return line(50, 50, 50 + L * Math.cos(t), 50 + L * Math.sin(t), sw); };
       const ticks = Array.from({ length: 8 }, (_, i) => { const t = i * Math.PI / 4; return line(50 + 33 * Math.cos(t), 50 + 33 * Math.sin(t), 50 + 37 * Math.cos(t), 50 + 37 * Math.sin(t), 1.5, '#b5b5bf'); }).join('');
-      render = at => `<circle cx="50" cy="50" r="40" fill="#fff" stroke="${INK}" stroke-width="${SW}"/>` + ticks + hand(at.h1, 31, 2.5) + hand(at.h2, 19, 6.5) + `<circle cx="50" cy="50" r="3.5" fill="${INK}"/>`;
-      answer = at => `long hand ${DIRN[at.h1]}, short hand ${DIRN[at.h2]}`;
+      render = at => `<circle cx="50" cy="50" r="40" fill="${FILLV[at.face || 'white']}" stroke="${INK}" stroke-width="${SW}"/>` + ticks + hand(at.h1, 31, 2.5) + hand(at.h2, 19, 6.5) + `<circle cx="50" cy="50" r="3.5" fill="${INK}"/>`;
+      answer = at => `long hand ${DIRN[at.h1]}, short hand ${DIRN[at.h2]}${at.face ? `, ${at.face} face` : ''}`;
       valid = at => at.h1 !== at.h2;
-      extra = 0.45;
+      extra = 0.45 - (varHand < 0 && d1 === d2 ? 0.5 : 0); // two hands turning the same way is nearly one rule
     } else {
       attrs.push(cyclic(R, 'h1', 'arrow', 8, R.pick([1, 1, 2, 3, -1, -2, -3]), p => `pointing ${DIRN[p]}`, TURN_V));
       attrs.push(catAttr(R, 'f', 'arrowhead colour', 'arrowhead colours', x => x, FILLS, R.pick(['row', 'col', 'lat1', 'lat2', 'two', 'const', 'const'])));
@@ -380,38 +492,52 @@ const ENGINE = (() => {
   };
   const OPALT = { or: 'all elements of both cells combined', xor: 'the elements in exactly one of the cells', and: 'only the shared elements', sub: 'cell 1 minus cell 2', bsub: 'cell 2 minus cell 1' };
   function genOverlay(R) {
+    // Easy: plain superimposition of 1-2 elements per cell that never overlap. Hard: dots whose shape and colour
+    // follow rules of their own, and the operation may run down the columns instead of along the rows.
+    const easy = !R.hard && R.chance(0.3);
     const lines = !R.hard && R.chance(0.55), n = lines ? 12 : 9, unit = lines ? 'line' : 'dot';
-    const shp = !lines && (R.hard || R.chance(0.35)) ? catAttr(R, 'k', 'dot shape', 'dot shapes', sName, ['circle', 'square', 'triangle', 'star', 'diamond'], R.pick(['row', 'col', 'lat1', 'lat2'])) : null;
-    const op = R.weighted({ or: 2, xor: 3, and: 2, sub: 2 });
+    const extra = [];
+    if (!lines && (R.hard || R.chance(0.3))) {
+      const s1 = R.pick(['row', 'col', 'lat1', 'lat2']);
+      extra.push(catAttr(R, 'k', 'dot shape', 'dot shapes', sName, ['circle', 'square', 'triangle', 'star', 'diamond'], s1));
+      if (R.hard && R.chance(0.6)) extra.push(catAttr(R, 'c', 'dot colour', 'dot colours', x => x, FILLS, R.pick(['row', 'col', 'lat1', 'lat2', 'two'].filter(x => x !== s1))));
+    }
+    const byCol = !easy && R.chance(R.hard ? 0.5 : 0.15);
+    const op = easy ? 'or' : R.weighted({ or: 2, xor: 3, and: 2, sub: 2 });
     const rand = (lo, hi) => { const k = R.int(lo, hi); let m = 0; for (const i of R.sample([...Array(n).keys()], k)) m |= 1 << i; return m; };
     const rows = [];
     for (let r = 0; r < 3; r++) {
       let A, B, C, t = 0;
-      do { A = rand(3, 5); B = rand(3, 5); C = OPS[op](A, B); t++; }
+      if (easy) do { A = rand(1, 2); B = rand(1, 2); C = A | B; t++; } while (t < 50 && ((A & B) || rows.some(p => p[0] === A && p[1] === B)));
+      else do { A = rand(3, 5); B = rand(3, 5); C = OPS[op](A, B); t++; }
       while (t < 50 && (popc(A & B) < 1 || popc(A ^ B) < 3 || popc(C) < 2 || A === B || C === A || C === B));
       if (t >= 50) return null;
       rows.push([A, B, C]);
     }
-    const g = rows, ans = g[2][2];
+    const g = byCol ? G((r, c) => rows[c][r]) : rows, ans = g[2][2];
     const preds = new Set();
     for (const [k, f] of Object.entries(OPS)) {
       if ([0, 1].every(r => f(g[r][0], g[r][1]) === g[r][2])) preds.add(f(g[2][0], g[2][1]));
       if ([0, 1].every(c => f(g[0][c], g[1][c]) === g[2][c])) preds.add(f(g[0][2], g[1][2]));
     }
     if (preds.size !== 1 || !preds.has(ans)) return null;
-    const alt = Object.keys(OPALT).filter(k => k !== op).map(k => ({ k, v: OPS[k](g[2][0], g[2][1]) }))
+    const desc = byCol ? `Read each column from top to bottom. ${OPDESC[op]} This holds in every column.` : `${OPDESC[op]} This holds in every row.`;
+    const [x1, x2] = byCol ? [g[0][2], g[1][2]] : [g[2][0], g[2][1]];
+    const altWhy = k => easy ? `This keeps only the ${unit}s of ${k === 'sub' ? 'cell 1' : 'cell 2'}. ${desc}` : `This shows ${OPALT[k]}. ${desc}`;
+    const alt = Object.keys(OPALT).filter(k => k !== op).map(k => ({ k, v: OPS[k](x1, x2) }))
       .filter((o, i, arr) => o.v !== ans && popc(o.v) >= 1 && arr.findIndex(p => p.v === o.v) === i);
     if (alt.length < 2) return null;
-    const pr = R.sample(alt, 2).map(o => ({ apply: at => ({ ...at, s: o.v }), why: `This shows ${OPALT[o.k]}. ${OPDESC[op]}` }));
+    const pr = R.sample(alt, 2).map(o => ({ apply: at => ({ ...at, s: o.v }), why: altWhy(o.k) }));
     const e = R.int(0, n - 1);
     const tog = s => (s ^ (1 << e)) || (s | (1 << ((e + 1) % n)));
-    let sec = { apply: at => ({ ...at, s: tog(at.s) }), why: at => popc(tog(at.s)) < popc(at.s) ? `One ${unit} is missing. ${OPDESC[op]}` : `It has an extra ${unit}. ${OPDESC[op]}`, join: false };
-    let consistent = at => preds.has(at.s);
-    if (shp) {
-      const o = R.pick(shp.alts.slice(0, 2)), P = predict(shp.grid);
-      if (R.chance(0.6)) sec = { apply: at => ({ ...at, k: o.v }), why: () => o.why, join: true };
-      consistent = at => preds.has(at.s) && P.has(at.k);
+    let sec = { apply: at => ({ ...at, s: tog(at.s) }), why: at => popc(tog(at.s)) < popc(at.s) ? `One ${unit} is missing. ${desc}` : `It has an extra ${unit}. ${desc}`, join: false };
+    if (extra.length && R.chance(0.6)) {
+      const a = R.pick(extra), o = R.pick(a.alts.slice(0, 2));
+      sec = { apply: at => ({ ...at, [a.key]: o.v }), why: () => o.why, join: true };
     }
+    const P = Object.fromEntries(extra.map(a => [a.key, predict(a.grid)]));
+    if (extra.some(a => P[a.key].size !== 1 || !P[a.key].has(a.grid[2][2]))) return null;
+    const consistent = at => preds.has(at.s) && extra.every(a => P[a.key].has(at[a.key]));
     let draw;
     if (lines) {
       const segs = [];
@@ -419,14 +545,16 @@ const ENGINE = (() => {
       segs.push([22, 22, 78, 22], [78, 22, 78, 78], [78, 78, 22, 78], [22, 78, 22, 22]);
       draw = at => segs.map(s => line(...s, 1.2, GUIDE)).join('') + bits(at.s, n).map(i => line(...segs[i], 4)).join('');
     } else {
-      const P = [26, 50, 74];
-      draw = at => [...Array(9).keys()].map(i => (at.s >> i & 1) ? shape(at.k || 'circle', P[i % 3], P[(i / 3) | 0], at.k ? 8 : 9, 'black', at.k ? 2 : 0) : `<circle cx="${P[i % 3]}" cy="${P[(i / 3) | 0]}" r="3" fill="${GUIDE}"/>`).join('');
+      const X = [26, 50, 74], styled = extra.length > 0;
+      draw = at => [...Array(9).keys()].map(i => (at.s >> i & 1) ? shape(at.k || 'circle', X[i % 3], X[(i / 3) | 0], styled ? 8 : 9, at.c || 'black', styled ? 2 : 0) : `<circle cx="${X[i % 3]}" cy="${X[(i / 3) | 0]}" r="3" fill="${GUIDE}"/>`).join('');
     }
-    const cells = CELLS.map(([r, c]) => ({ s: g[r][c], ...(shp ? { k: shp.grid[r][c] } : {}) }));
-    const points = { or: 0.95, and: 1.15, sub: 1.35, xor: 1.5 }[op] + (lines ? 0.2 : 0) + 0.85 + (shp ? shp.w + 0.35 : 0);
-    const ansAt = { s: ans, ...(shp ? { k: shp.grid[2][2] } : {}) };
+    const at = (r, c) => ({ s: g[r][c], ...Object.fromEntries(extra.map(a => [a.key, a.grid[r][c]])) });
+    const cells = CELLS.map(([r, c]) => at(r, c)), ansAt = at(2, 2);
+    const points = (easy ? 0.75 + 0.35 : { or: 0.95, and: 1.15, sub: 1.35, xor: 1.5 }[op] + 0.85) + (lines ? 0.2 : 0) + (byCol ? 0.3 : 0)
+      + extra.reduce((s, a) => s + a.w + 0.35, 0);
+    const look = extra.length ? ` Answer: ${ansAt.c ? ansAt.c + ' ' : ''}${ansAt.k ? sName(ansAt.k) + 's' : 'dots'}.` : '';
     return finish(R, { fam: 'overlay', points, cells, ans: ansAt, prim: pr, sec, render: draw, consistent,
-      rule: `${OPDESC[op]} This holds in every row.${shp ? ' ' + shp.text + ` Answer: ${sName(shp.grid[2][2])}s.` : ''}` });
+      rule: desc + extra.map(a => ' ' + a.text).join('') + look });
   }
 
   // ------------------------------------------------------------ family: board patterns that shift or rotate
@@ -448,31 +576,58 @@ const ENGINE = (() => {
       cw: 'turns 90° clockwise each column', ccw: 'turns 90° anticlockwise each column',
       dr: 'moves one square diagonally down-right each column (wrapping round)', ur: 'moves one square diagonally up-right each column (wrapping round)',
     };
+    // One step of each move, for rules where column 1 -> 2 and column 2 -> 3 are different moves.
+    const STEP = {
+      right: 'moves one square to the right', left: 'moves one square to the left', down: 'moves one square down', up: 'moves one square up',
+      cw: 'turns 90° clockwise', ccw: 'turns 90° anticlockwise', dr: 'moves one square diagonally down-right', ur: 'moves one square diagonally up-right',
+    };
+    const TW = { right: 1.0, left: 1.05, down: 1.0, up: 1.05, cw: 1.35, ccw: 1.45, dr: 1.4, ur: 1.45 };
     const NAMES = ['black squares', 'circles'];
     const attrs = [];
     const usedT = new Set();
     for (let L = 0; L < layers; L++) {
-      const t = R.pick(['right', 'left', 'down', 'up', 'cw', 'ccw', 'dr', 'ur'].filter(x => !usedT.has(x)));
+      // Two-step rule: a different move from column 1 to 2 than from column 2 to 3 (hard: usually on the first layer).
+      const two = R.hard ? L === 0 && R.chance(0.65) : layers === 1 && R.chance(0.4);
+      const pool = two && R.chance(R.hard ? 0.4 : 0.7) ? ['right', 'left', 'down', 'up'] : Object.keys(TW);
+      const t = R.pick(pool.filter(x => !usedT.has(x)));
       usedT.add(t);
+      const t2 = two ? R.pick(pool.filter(x => x !== t && x !== INV[t] && !usedT.has(x))) : t;
+      usedT.add(t2);
       const k = n === 3 ? R.int(2, 3) : R.int(3, 5);
       const rand = () => { let m = 0; for (const i of R.sample([...Array(N2).keys()], k)) m |= 1 << i; return m; };
       const starts = [rand(), rand(), rand()];
-      const grid = G((r, c) => { let m = starts[r]; for (let i = 0; i < c; i++) m = TF[t](m); return m; });
-      const preds = new Set();
-      for (const f of Object.values(TF)) {
-        if ([0, 1].every(r => f(grid[r][0]) === grid[r][1] && f(grid[r][1]) === grid[r][2]) && f(grid[2][0]) === grid[2][1]) preds.add(f(grid[2][1]));
-        if ([0, 1].every(c => f(grid[0][c]) === grid[1][c] && f(grid[1][c]) === grid[2][c]) && f(grid[0][2]) === grid[1][2]) preds.add(f(grid[1][2]));
+      const grid = G((r, c) => c === 0 ? starts[r] : c === 1 ? TF[t](starts[r]) : TF[t2](TF[t](starts[r])));
+      // Every reading "column 2 = f(column 1), column 3 = h(column 2)" or "column 3 = f(column 1)", along rows or columns.
+      const preds = new Set(), fs = Object.values(TF);
+      for (const m of [grid, G((r, c) => grid[c][r])]) {
+        if (fs.some(f => [0, 1, 2].every(r => f(m[r][0]) === m[r][1])))
+          for (const h of fs) if ([0, 1].every(r => h(m[r][1]) === m[r][2])) preds.add(h(m[2][1]));
+        for (const f of fs) if ([0, 1].every(r => f(m[r][0]) === m[r][2])) preds.add(f(m[2][0]));
       }
-      if (preds.size !== 1) return null;
-      const a = grid[2][2], nm = NAMES[L], d = DESC[t];
-      const alts = [
-        { v: grid[2][1], why: `The ${nm} did not move. The pattern ${d}.` },
-        { v: TF[INV[t]](grid[2][1]), why: `This moved the wrong way. The pattern of ${nm} ${d}.` },
-        { v: TF[t](a), why: `This moved twice. The pattern of ${nm} ${d}.` },
-        t === 'cw' || t === 'ccw' ? { v: TF.fliph(a), why: `This is a mirror image of the correct answer. The pattern of ${nm} ${d}.` }
-          : { v: TF[{ right: 'down', left: 'up', down: 'right', up: 'left', dr: 'right', ur: 'up' }[t]](grid[2][1]), why: `This moved in the wrong direction. The pattern of ${nm} ${d}.` },
-      ].filter((o, i, arr) => o.v !== a && arr.findIndex(p => p.v === o.v) === i);
-      attrs.push({ key: 'L' + L, grid, preds, alts, text: `The pattern of ${nm} ${d}.`, w: { right: 1.0, left: 1.05, down: 1.0, up: 1.05, cw: 1.35, ccw: 1.45, dr: 1.4, ur: 1.45 }[t] });
+      if (preds.size !== 1 || grid.some(rw => new Set(rw).size < 3)) return null;
+      const a = grid[2][2], mid = grid[2][1], nm = NAMES[L];
+      let text, alts;
+      if (two) {
+        text = `In every row, the pattern of ${nm} ${STEP[t]} from column 1 to column 2, then ${STEP[t2]} from column 2 to column 3 (wrapping round at the edges).`;
+        alts = [
+          { v: mid, why: `The ${nm} did not change from column 2 to column 3. ${text}` },
+          { v: TF[t](mid), why: `This repeats the first move instead of making the second one. ${text}` },
+          { v: TF[INV[t2]](mid), why: `This made the second move the wrong way round. ${text}` },
+          { v: TF[t2](a), why: `This made the second move twice. ${text}` },
+        ];
+      } else {
+        const d = DESC[t];
+        text = `The pattern of ${nm} ${d}.`;
+        alts = [
+          { v: mid, why: `The ${nm} did not move. The pattern ${d}.` },
+          { v: TF[INV[t]](mid), why: `This moved the wrong way. The pattern of ${nm} ${d}.` },
+          { v: TF[t](a), why: `This moved twice. The pattern of ${nm} ${d}.` },
+          t === 'cw' || t === 'ccw' ? { v: TF.fliph(a), why: `This is a mirror image of the correct answer. The pattern of ${nm} ${d}.` }
+            : { v: TF[{ right: 'down', left: 'up', down: 'right', up: 'left', dr: 'right', ur: 'up' }[t]](mid), why: `This moved in the wrong direction. The pattern of ${nm} ${d}.` },
+        ];
+      }
+      alts = alts.filter((o, i, arr) => o.v !== a && arr.findIndex(p => p.v === o.v) === i);
+      attrs.push({ key: 'L' + L, grid, preds, alts, text, w: two ? TW[t] + TW[t2] + 0.35 : TW[t] });
     }
     const ans = Object.fromEntries(attrs.map(a => [a.key, a.grid[2][2]]));
     const pa = R.pick(attrs);
@@ -625,14 +780,21 @@ const ENGINE = (() => {
     const glyph = R.chance(0.5) ? 'cells' : 'arms';
     const lib = ['id', ...D4, ...FOLDS, ...(glyph === 'cells' ? [...HALF, ...SWAP] : [])];
     const pool = glyph === 'cells' ? [...D4, ...FOLDS, ...HALF, ...SWAP] : [...D4, ...FOLDS];
-    const mode = glyph === 'arms' && !R.hard && R.chance(0.2) ? 'or' : R.hard ? 'two' : R.weighted({ same: 4, two: 3 });
+    // Easy: a small figure (2-3 squares or 1-2 arms) with one simple turn or mirror repeated at each step.
+    const small = !R.hard && R.chance(0.3);
+    const mode = small ? 'same' : glyph === 'arms' && !R.hard && R.chance(0.2) ? 'or' : R.hard ? 'two' : R.weighted({ same: 3, two: 4 });
     let t1, t2;
-    if (mode === 'same') t1 = t2 = R.pick(glyph === 'cells' ? [...D4, ...SWAP] : D4);
+    if (small) t1 = t2 = R.pick(glyph === 'cells' ? ['mh', 'mv', 'r180', 'r90', 'r270', ...SWAP] : ['mh', 'mv', 'r180', 'r90', 'r270']);
+    else if (mode === 'same') t1 = t2 = R.pick(glyph === 'cells' ? [...D4, ...SWAP] : D4);
     else if (mode === 'two') {
       const hardPool = pool.filter(t => XW[t] >= 1.25);
-      t1 = R.pick(R.hard ? hardPool : D4); t2 = R.pick(pool.filter(t => t !== t1 && (!R.hard || XW[t] >= 1))); if (R.chance(0.5)) [t1, t2] = [t2, t1];
+      t1 = R.pick(R.hard ? hardPool : D4); const lo = !R.hard && R.chance(0.5);
+      t2 = R.pick(pool.filter(t => t !== t1 && (R.hard ? XW[t] >= 1 : !lo || XW[t] <= 1.1))); if (R.chance(0.5)) [t1, t2] = [t2, t1];
     }
-    const mkFig = () => glyph === 'cells' ? randCells(R, R.int(R.hard ? 5 : 4, R.hard ? 7 : 6)) : randArms(R, R.int(2, 3), R.hard ? 2 : 1);
+    const mkFig = () => small ? (glyph === 'cells' ? randCells(R, R.int(2, 3)) : randArms(R, R.int(1, 2), 1))
+      : glyph === 'cells' ? randCells(R, R.int(R.hard ? 5 : 4, R.hard ? 7 : 6)) : randArms(R, R.int(2, 3), R.hard ? 2 : 1);
+    // Mirrors, 180° turns and swaps undone by a second application: column 3 is then simply column 1 again.
+    const invol = mode === 'same' && ['mh', 'mv', 'r180', 'md', 'ma', ...SWAP].includes(t1);
     const rows = [];
     for (let r = 0; r < 3; r++) {
       let row, t = 0;
@@ -640,7 +802,7 @@ const ENGINE = (() => {
         if (mode === 'or') { const a = mkFig(), b = mkFig(); row = [a, b, SETOP.or(a, b)]; }
         else { const a = mkFig(), b = XF[t1](a); row = [a, b, XF[t2](b)]; }
         t++;
-      } while (t < 30 && (new Set(row).size < 3 || row.some(x => !x) || rows.some(p => p[0] === row[0])));
+      } while (t < 30 && (new Set(row).size < (invol ? 2 : 3) || row.some(x => !x) || rows.some(p => p[0] === row[0])));
       if (t >= 30) return null;
       rows.push(row);
     }
@@ -648,7 +810,7 @@ const ENGINE = (() => {
     if (preds.size !== 1 || !preds.has(ans)) return null;
     let rule;
     if (mode === 'or') rule = 'Column 3 is columns 1 and 2 laid on top of each other: every line and dot from both is kept.';
-    else if (mode === 'same') rule = `Each step to the right, the figure is ${XTXT[t1]}.`;
+    else if (mode === 'same') rule = `Each step to the right, the next figure is the previous one ${XTXT[t1]}${invol ? ', so column 3 is the same as column 1' : ''}.`;
     else rule = `In every row, column 2 is column 1 ${XTXT[t1]}, and column 3 is column 2 ${XTXT[t2]}.`;
     if (glyph === 'arms' && mode !== 'or') rule += ' Watch the dots: a mirror moves a dot to the other side of its line, a rotation does not.';
     const mid = g[2][1], cand = [], fallback = [];
@@ -670,7 +832,7 @@ const ENGINE = (() => {
     const prim = alts.slice(0, 2).map(c => ({ apply: () => ({ s: c.s }), why: c.why }));
     const pert = {};
     const sec = { apply: at => { const p = perturb(R, at.s, glyph); pert[at.s] = p; return { s: p ? p.s : at.s }; }, why: at => `${(pert[at.s] || {}).why || ''} ${rule}`, join: false };
-    const w = mode === 'or' ? 1.55 : mode === 'same' ? XW[t1] + 0.15 : XW[t1] + XW[t2] + 0.35;
+    const w = mode === 'or' ? 1.55 : mode === 'same' ? XW[t1] + 0.15 - (invol ? 0.25 : 0) - (small ? 0.4 : 0) : XW[t1] + XW[t2] + 0.35;
     const points = 0.85 + w + (glyph === 'arms' && mode !== 'or' ? 0.35 : 0) + (R.hard && glyph === 'arms' ? 0.2 : 0) + (glyph === 'cells' && R.hard ? 0.2 : 0);
     const cells = CELLS.map(([r, c]) => ({ s: g[r][c] }));
     return finish(R, { fam: 'fold', points, cells, ans: { s: ans }, prim, sec, render: at => drawFig(at.s, glyph), consistent: at => preds.has(at.s), valid: at => !!at.s, rule });
@@ -687,8 +849,9 @@ const ENGINE = (() => {
     bsub: { f: (a, b) => Math.max(0, b - a), w: 1.7, d: '' }, first: { f: a => a, w: 0, d: '' }, second: { f: (a, b) => b, w: 0, d: '' },
   };
   const SHN = ['white', 'grey', 'black'], SHF = [FILLV.white, FILLV.grey, INK];
-  function drawShade(v, kind) {
+  function drawShade(v, kind, frame) {
     const st = `stroke="${INK}" stroke-width="${SW}" stroke-linejoin="round"`;
+    if (frame !== undefined) return `<rect x="6" y="6" width="88" height="88" fill="${SHF[frame]}" ${st}/><rect x="13" y="13" width="74" height="74" fill="#fff" stroke="${INK}" stroke-width="1.5"/>` + drawShade(v, kind);
     if (kind === 'half') return `<path d="M50,16 A34,34 0 0 0 50,84 Z" fill="${SHF[v[0]]}" ${st}/><path d="M50,16 A34,34 0 0 1 50,84 Z" fill="${SHF[v[1]]}" ${st}/>`;
     if (kind === 'tri') {
       const P = [[50, 50], [50, 14], [81.2, 68], [18.8, 68]];
@@ -699,7 +862,29 @@ const ENGINE = (() => {
     if (kind === 'quadc') o += `<circle cx="50" cy="50" r="11" fill="${SHF[v[4]]}" ${st}/>`;
     return o;
   }
+  // Easy variant: each region's shade follows its own simple rule (fixed per row, Latin square, ...), no mixing.
+  const REGN = { half: ['left half', 'right half'], tri: ['upper-right part', 'bottom part', 'upper-left part'] };
+  const mixPreds = g => {
+    const K = v => v.join(''), out = new Set();
+    for (const m of [g, G((r, c) => g[c][r])]) for (const o of Object.values(SHOPS))
+      if ([0, 1].every(r => K(m[r][0].map((x, i) => o.f(x, m[r][1][i]))) === K(m[r][2]))) out.add(K(m[2][0].map((x, i) => o.f(x, m[2][1][i]))));
+    return out;
+  };
+  function genShadeRegions(R) {
+    const kind = R.pick(['half', 'tri']), names = REGN[kind];
+    const defs = names.map((_, i) => ({ key: 'r' + i, structs: ['row', 'col', 'lat1', 'lat2', 'two'] }));
+    const st = pickStructs(R, defs, Math.min(names.length, +R.weighted({ 1: 3, 2: 4, 3: 2 })), null);
+    if (!st) return null;
+    const attrs = names.map((nm, i) => catAttr(R, 'r' + i, `shade of the ${nm}`, `${nm} shades`, x => SHN[x], [0, 1, 2], st['r' + i]));
+    const vec = at => attrs.map(a => at[a.key]);
+    // Reject grids that a column-mixing rule (the family's other variant) would complete differently.
+    const g = G((r, c) => attrs.map(a => a.grid[r][c]));
+    if ([...mixPreds(g)].some(k => k !== g[2][2].join(''))) return null;
+    return buildFromAttrs(R, 'shade', attrs, at => drawShade(vec(at), kind), 0,
+      at => `${vec(at).map(x => SHN[x]).join(', ')} (${kind === 'half' ? 'left, right' : 'clockwise from the top'})`);
+  }
   function genShade(R) {
+    if (!R.hard && R.chance(0.3)) return genShadeRegions(R);
     const kind = R.hard ? R.pick(['quad', 'quadc']) : R.weighted({ half: 2, tri: 2, quad: 3, quadc: 1 });
     const n = { half: 2, tri: 3, quad: 4, quadc: 5 }[kind];
     const op = R.hard ? R.weighted({ sub: 1, diff: 2, mod: 2, add: 1 }) : R.weighted({ max: 2, min: 1, add: 3, sub: 1, diff: 2, mod: 1 });
@@ -712,12 +897,21 @@ const ENGINE = (() => {
       rows.push([a, b, a.map((x, i) => SHOPS[op].f(x, b[i]))]);
     }
     const g = byCol ? G((r, c) => rows[c][r]) : rows, ans = g[2][2], K = v => v.join('');
-    const preds = new Set();
-    for (const m of [g, G((r, c) => g[c][r])]) for (const o of Object.values(SHOPS))
-      if ([0, 1].every(r => K(m[r][0].map((x, i) => o.f(x, m[r][1][i]))) === K(m[r][2]))) preds.add(K(m[2][0].map((x, i) => o.f(x, m[2][1][i]))));
+    const preds = mixPreds(g);
     if (preds.size !== 1 || !preds.has(K(ans))) return null;
     if (new Set(g.flat().map(K)).size < 7) return null;
-    const rule = (byCol ? 'This works down the columns: row 3 is made from rows 1 and 2. ' : 'In every row, column 3 is made from columns 1 and 2. ') + SHOPS[op].d;
+    // Hard: a frame around the squares whose shade follows a separate rule of its own.
+    const frame = (kind === 'quad' || kind === 'quadc') && R.chance(R.hard ? 0.6 : 0.1)
+      ? catAttr(R, 'f', 'frame shade', 'frame shades', x => SHN[x], [0, 1, 2], R.pick(['row', 'col', 'lat1', 'lat2', 'two'])) : null;
+    let Pf = null;
+    if (frame) {
+      Pf = predict(frame.grid);
+      for (const m of [frame.grid, G((r, c) => frame.grid[c][r])]) for (const o of Object.values(SHOPS))
+        if ([0, 1].every(r => o.f(m[r][0], m[r][1]) === m[r][2])) Pf.add(o.f(m[2][0], m[2][1]));
+      if (Pf.size !== 1) return null;
+    }
+    const rule = (byCol ? 'This works down the columns: row 3 is made from rows 1 and 2. ' : 'In every row, column 3 is made from columns 1 and 2. ') + SHOPS[op].d
+      + (frame ? ` The frame is not part of the mixing: ${frame.text.replace(/^Each/, 'each').replace(/^Frame/, 'frame').replace(/^Every/, 'every')}` : '');
     const [x1, x2] = byCol ? [g[0][2], g[1][2]] : [g[2][0], g[2][1]];
     const seen = new Set(preds), alts = [];
     for (const [k, o] of R.shuffle(Object.entries(SHOPS))) {
@@ -727,13 +921,15 @@ const ENGINE = (() => {
     }
     for (let i = 0; alts.length < 2 && i < n; i++) { const v = ans.slice(); v[i] = (v[i] + 1) % 3; if (!seen.has(K(v))) { seen.add(K(v)); alts.push({ v, why: `One region has the wrong shade. ${rule}` }); } }
     if (alts.length < 2) return null;
-    const prim = alts.slice(0, 2).map(o => ({ apply: () => ({ v: o.v }), why: o.why }));
+    const prim = alts.slice(0, 2).map(o => ({ apply: at => ({ ...at, v: o.v }), why: o.why }));
     const ri = R.int(0, n - 1), dlt = R.pick([1, 2]);
-    const sec = { apply: at => { const v = at.v.slice(); v[ri] = (v[ri] + dlt) % 3; return { v }; }, why: () => `One region has the wrong shade. ${rule}`, join: false };
-    const points = 0.85 + SHOPS[op].w + { half: 0, tri: 0.2, quad: 0.35, quadc: 0.6 }[kind] + (byCol ? 0.3 : 0);
-    const cells = CELLS.map(([r, c]) => ({ v: g[r][c] }));
-    return finish(R, { fam: 'shade', points, cells, ans: { v: ans }, prim, sec, render: at => drawShade(at.v, kind), consistent: at => preds.has(K(at.v)),
-      rule: rule + ` Answer: ${ans.map(x => SHN[x]).join(', ')} (${kind === 'half' ? 'left, right' : kind === 'tri' ? 'clockwise from the top' : 'top-left, top-right, bottom-left, bottom-right' + (kind === 'quadc' ? ', centre' : '')}).` });
+    let sec = { apply: at => { const v = at.v.slice(); v[ri] = (v[ri] + dlt) % 3; return { ...at, v }; }, why: () => `One region has the wrong shade. ${rule}`, join: false };
+    if (frame && R.chance(0.5)) { const o = R.pick(frame.alts); sec = { apply: at => ({ ...at, f: o.v }), why: () => o.why, join: true }; }
+    const points = 0.85 + SHOPS[op].w + { half: 0, tri: 0.2, quad: 0.35, quadc: 0.6 }[kind] + (byCol ? 0.3 : 0) + (frame ? frame.w + 0.15 : 0);
+    const cell = (r, c) => ({ v: g[r][c], ...(frame ? { f: frame.grid[r][c] } : {}) });
+    return finish(R, { fam: 'shade', points, cells: CELLS.map(([r, c]) => cell(r, c)), ans: cell(2, 2), prim, sec,
+      render: at => drawShade(at.v, kind, frame ? at.f : undefined), consistent: at => preds.has(K(at.v)) && (!frame || Pf.has(at.f)),
+      rule: rule + ` Answer: ${ans.map(x => SHN[x]).join(', ')} (${kind === 'half' ? 'left, right' : kind === 'tri' ? 'clockwise from the top' : 'top-left, top-right, bottom-left, bottom-right' + (kind === 'quadc' ? ', centre' : '')})${frame ? `, with a ${SHN[frame.grid[2][2]]} frame` : ''}.` });
   }
 
   // ------------------------------------------------------------ family: dots beside a line (same side adds up, opposite sides cancel)
@@ -776,8 +972,54 @@ const ENGINE = (() => {
     }
     return null;
   }
+  // Four quadrants hold two signed counts: p (+ one quadrant, - the opposite one) and q (the other diagonal).
+  // A solver may instead cancel dots in neighbouring quadrants (e.g. top-left against top-right). Reject grids where
+  // such a pairing also fits "column 3 = column 1 + column 2" (or the row version): it then predicts the cancelled-out
+  // figure for that pairing, which must be exactly the real answer.
+  function quadRival(pG, qG) {
+    const quads = (p, q) => [Math.max(q, 0), Math.max(-p, 0), Math.max(-q, 0), Math.max(p, 0)]; // in order around the centre
+    const Q = G((r, c) => quads(pG[r][c], qG[r][c])), A = Q[2][2];
+    for (const pairs of [[[0, 1], [2, 3]], [[0, 3], [1, 2]]]) {
+      const nets = pairs.map(([i, j]) => G((r, c) => Q[r][c][i] - Q[r][c][j]));
+      for (const t of [false, true]) {
+        const ms = nets.map(g => t ? G((r, c) => g[c][r]) : g);
+        if (!ms.every(m => [0, 1].every(r => m[r][0] + m[r][1] === m[r][2]))) continue;
+        const rival = [0, 0, 0, 0];
+        pairs.forEach(([i, j], k) => { const n = ms[k][2][0] + ms[k][2][1]; rival[i] = Math.max(n, 0); rival[j] = Math.max(-n, 0); });
+        if (rival.some((v, i) => v !== A[i])) return true;
+      }
+    }
+    return false;
+  }
+  const pickSlots = (list, n, seed) => { let a = seed >>> 0; const rnd = () => (a = (Math.imul(a, 1664525) + 1013904223) >>> 0) / 4294967296; const b = list.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b.slice(0, n); };
+  const dotSvg = ([x, y]) => `<circle cx="${x}" cy="${y}" r="4.8" fill="${INK}"/>`;
+  // Easy variant: the number of dots on each side of the line follows its own simple rule; nothing cancels.
+  function genSidesCount(R) {
+    const L = R.pick(['v', 'h', 'd1', 'd2']), slots = { 1: [], '-1': [] };
+    for (const [x, y] of SGRID) if (lineDist(L, x, y) >= 12) slots[lineSide(L, x, y)].push([x, y]);
+    const hi = Math.min(5, slots[1].length, slots[-1].length);
+    const defs = [{ key: 'p', structs: ['prog', 'prog', 'row', 'col', 'lat1', 'lat2', 'arith', 'carith'] }, { key: 'q', structs: ['prog', 'row', 'col', 'lat1', 'lat2'] }];
+    const st = pickStructs(R, defs, +R.weighted({ 1: 2, 2: 5 }), null);
+    if (!st) return null;
+    const [n1, n2] = SIDEN[L];
+    const nm = x => String(x);
+    const attrs = [numAttr(R, 'p', `number of dots ${n1}`, nm, 0, hi, st.p, `dot counts ${n1}:`), numAttr(R, 'q', `number of dots ${n2}`, nm, 0, hi, st.q, `dot counts ${n2}:`)];
+    if (attrs.some(a => !a)) return null;
+    // Reject grids where "dots on opposite sides cancel" would also fit rows/columns 1 and 2.
+    const net = G((r, c) => attrs[0].grid[r][c] - attrs[1].grid[r][c]);
+    for (const m of [net, G((r, c) => net[c][r])]) if ([0, 1].every(r => m[r][0] + m[r][1] === m[r][2])) return null;
+    const zg = G(() => R.int(1, 1e6));
+    attrs.push({ key: 'z', grid: zg, varying: false, w: 0, text: '', alts: [], preds: new Set([zg[2][2]]) });
+    const render = at => line(...SLN[L][0], ...SLN[L][1], 3) + [at.p, at.q].flatMap((k, i) => pickSlots(slots[i ? -1 : 1], k, at.z * (i + 3))).map(dotSvg).join('');
+    const dots = k => `${k} dot${k === 1 ? '' : 's'}`;
+    const it = buildFromAttrs(R, 'sides', attrs, render, L[0] === 'd' ? 0.15 : 0, at => `${dots(at.p)} ${n1} and ${dots(at.q)} ${n2}`,
+      at => at.p >= 0 && at.q >= 0 && at.p <= hi && at.q <= hi);
+    if (it) it.rule = it.rule.replace(' Answer:', ' Where the dots sit within their side does not matter. Answer:');
+    return it;
+  }
   function genSides(R) {
-    const quad = R.hard || R.chance(0.3), byCol = R.chance(R.hard ? 0.5 : 0.2);
+    if (!R.hard && R.chance(0.35)) return genSidesCount(R);
+    const quad = R.chance(R.hard ? 0.55 : 0.15), byCol = R.chance(R.hard ? 0.5 : 0.2);
     const lines = quad ? (R.chance(0.5) ? ['v', 'h'] : ['d1', 'd2']) : [R.pick(['v', 'h', 'd1', 'd2'])];
     const qn = quad && QUADN[lines[0] === 'v' ? 'vh' : 'dd'];
     // slots[pair][sign] = candidate dot positions
@@ -793,32 +1035,44 @@ const ENGINE = (() => {
     const attrs = [signedAttr(R, 'p', capN, quad ? 3 : 4, byCol, nmF(0), quad ? `${qn[0][0]}/${qn[0][1]} quadrants` : '')];
     if (quad) attrs.push(signedAttr(R, 'q', capN, 3, byCol, nmF(1), `${qn[1][0]}/${qn[1][1]} quadrants`));
     if (attrs.some(a => !a)) return null;
+    if (quad && quadRival(attrs[0].grid, attrs[1].grid)) return null;
+    // Single line: the dots' shape may follow a separate rule of its own (every cell then needs at least one dot).
+    let kA = null;
+    const zero = attrs[0].grid.flat().includes(0);
+    if (!quad && R.hard && zero) return null;
+    if (!quad && !zero && (R.hard || R.chance(0.65))) {
+      kA = catAttr(R, 'k', 'dot shape', 'dot shapes', sName, ['circle', 'square', 'triangle'], R.pick(R.hard ? ['row', 'col', 'lat1', 'lat2', 'two'] : ['row', 'col', 'row', 'col', 'lat1', 'lat2', 'two']));
+      kA.preds = predict(kA.grid);
+      attrs.push(kA);
+    }
     const zg = G(() => R.int(1, 1e6));
     attrs.push({ key: 'z', grid: zg, varying: false, w: 0, text: '', alts: [], preds: new Set([zg[2][2]]) });
-    const pickSlots = (list, n, seed) => { let a = seed >>> 0; const rnd = () => (a = (Math.imul(a, 1664525) + 1013904223) >>> 0) / 4294967296; const b = list.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b.slice(0, n); };
     const render = at => lines.map(L => line(...SLN[L][0], ...SLN[L][1], 3)).join('') +
-      [at.p, quad ? at.q : 0].flatMap((v, i) => v ? pickSlots(slots[i][Math.sign(v)], Math.abs(v), at.z * (i + 3)) : []).map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.8" fill="${INK}"/>`).join('');
-    const valid = at => Math.abs(at.p) <= capN && (!quad || Math.abs(at.q) <= capN);
+      [at.p, quad ? at.q : 0].flatMap((v, i) => v ? pickSlots(slots[i][Math.sign(v)], Math.abs(v), at.z * (i + 3)) : [])
+        .map(p => at.k && at.k !== 'circle' ? shape(at.k, ...p, 4.6, 'black', 1) : dotSvg(p)).join('');
+    const valid = at => Math.abs(at.p) <= capN && (!quad || Math.abs(at.q) <= capN) && (!kA || at.p !== 0);
     const extra = (lines[0][0] === 'd' ? 0.15 : 0) + (byCol ? 0.3 : 0) + (quad ? -0.2 : 0.25);
     const vary = attrs.filter(a => a.varying), pa = R.pick(vary);
     if (pa.alts.length < 2) return null;
     const ans = Object.fromEntries(attrs.map(a => [a.key, a.grid[2][2]]));
+    if (vary.some(a => a.preds.size !== 1 || !a.preds.has(ans[a.key]))) return null;
     const prim = R.sample(pa.alts, 2).map(o => ({ apply: at => ({ ...at, [pa.key]: o.v }), why: o.why }));
     const other = vary.find(a => a !== pa);
     let sec;
     if (other && R.chance(0.6)) { const o = R.pick(other.alts); sec = { apply: at => ({ ...at, [other.key]: o.v }), why: () => o.why, join: true }; }
     else {
-      const sa = R.pick(vary), d = R.pick([1, -1]);
+      const sa = R.pick(vary.filter(a => a !== kA)), d = R.pick([1, -1]);
       sec = { apply: at => ({ ...at, [sa.key]: at[sa.key] + d }), why: () => `Count the dots again. ${sa.text}`, join: false };
     }
     const cells = CELLS.map(([r, c]) => Object.fromEntries(attrs.map(a => [a.key, a.grid[r][c]])));
     const points = vary.reduce((s, a) => s + a.w, 0) + 0.35 * (vary.length - 1) + extra + 0.85;
     return finish(R, { fam: 'sides', points, cells, ans, prim, sec, render, valid, consistent: at => vary.every(a => a.preds.has(at[a.key])),
-      rule: vary.map(a => a.text).join(' ') + ` Where the dots sit within their side does not matter. Answer: ${[nmF(0)(ans.p), ...(quad ? [nmF(1)(ans.q)] : [])].join(' and ')}.` });
+      preds: vary.map(a => ({ key: a.key, answer: ans[a.key], values: [...a.preds] })),
+      rule: vary.map(a => a.text).join(' ') + ` Where the dots sit within their side does not matter. Answer: ${[nmF(0)(ans.p), ...(quad ? [nmF(1)(ans.q)] : [])].join(' and ')}${kA ? `, drawn as ${sName(ans.k)}s` : ''}.` });
   }
 
   const FAMILIES = { single: genSingle, count: genCount, inout: genInOut, move: genMove, dial: genDial, overlay: genOverlay, board: genBoard, fold: genFold, shade: genShade, sides: genSides };
-  const FAM_WEIGHT = { single: 1, count: 1.2, inout: 1, move: 1, dial: 0.8, overlay: 1.1, board: 1, fold: 1.3, shade: 1, sides: 1.1 };
+  const FAM_WEIGHT = { single: 1, count: 1.2, inout: 1, move: 1, dial: 0.8, overlay: 1.1, board: 1, fold: 1.1, shade: 1, sides: 1.1 };
 
   function make(fam, seed, hard = false) {
     try { const it = FAMILIES[fam](Rand(seed, hard)); if (it) it.id = `n:${fam}:${seed}${hard ? ':h' : ''}`; return it; } catch (e) { if (typeof console !== 'undefined') console.error(fam, seed, e); return null; }
@@ -837,8 +1091,24 @@ const ENGINE = (() => {
     }
     return best;
   }
+  // Next item in a run, given the families used so far: prefer families not used yet, then aim for at most 2 per
+  // family and none of the last 3, relaxing step by step only when no allowed family gets within `tol` of `target`.
+  const RUN_RULES = [[1, 3], [2, 3], [3, 3], [4, 1], [Infinity, 0]];
+  function generateForRun(target, used = [], { rnd = Math.random, tol = 0.35 } = {}) {
+    const all = Object.keys(FAMILIES), n = f => used.filter(x => x === f).length;
+    let best = null;
+    for (const [cap, gap] of RUN_RULES) {
+      const recent = gap ? used.slice(-gap) : [];
+      const ok = all.filter(f => n(f) < cap && !recent.includes(f));
+      if (!ok.length) continue;
+      const it = generate(target, { avoid: all.filter(f => !ok.includes(f)), rnd });
+      if (it && (!best || Math.abs(it.b - target) < Math.abs(best.b - target))) best = it;
+      if (best && Math.abs(best.b - target) <= tol) break;
+    }
+    return best;
+  }
   const fromId = id => { const [, fam, seed, h] = id.split(':'); return make(fam, +seed, h === 'h'); };
-  return { make, fromId, generate, FAMILIES: Object.keys(FAMILIES), predict };
+  return { make, fromId, generate, generateForRun, FAMILIES: Object.keys(FAMILIES), predict, hooks };
 })();
 if (typeof module !== 'undefined') module.exports = ENGINE;
 
@@ -946,11 +1216,10 @@ const level = id => Math.min(10, Math.max(1, Math.round(stenRaw(item(id).b))));
 function pickNext() {
   const t = S.order.length ? estimate(S.order, S.resp).theta : -0.5;
   if (S.src === 'new') {
-    // Generated run: target the current ability estimate, never repeat a family back-to-back, max 4 per family.
-    const fams = S.order.map(id => item(id).fam), count = f => fams.filter(x => x === f).length;
-    const avoid = ENGINE.FAMILIES.filter(f => f === fams[fams.length - 1] || count(f) >= 4);
+    // Generated run: target the current ability estimate while spreading families (see ENGINE.generateForRun).
     const target = Math.max(-2.4, Math.min(3.0, t + (Math.random() - 0.5) * 0.5));
-    return freshItem(target, avoid);
+    const it = ENGINE.generateForRun(target, S.order.map(id => item(id).fam)) || ENGINE.generate(target);
+    GEN_CACHE.set(it.id, it); return it.id;
   }
   const used = new Set(S.order), fams = new Set(S.order.map(id => ITEMS[id].fam)), seen = new Set(loadSeen());
   const cand = ITEMS.map((it, id) => ({ id, v: info(t, it.b) * (seen.has(id) ? 0.5 : 1) }))
