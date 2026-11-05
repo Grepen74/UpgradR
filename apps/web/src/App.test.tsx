@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 
@@ -361,55 +361,13 @@ describe("App", () => {
     });
   });
 
-  it("retries a failed background re-check so a resumed iOS tab still catches up", async () => {
-    let signedIn = false;
-    let failNextSession = false;
+  function mockSessionApi(sessionResponse: () => Promise<Response> | Response) {
+    const sessionRequests = { count: 0 };
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;
       if (url.includes("/api/session")) {
-        if (failNextSession) {
-          failNextSession = false;
-          throw new TypeError("Load failed");
-        }
-        return jsonResponse({
-          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
-        });
-      }
-      if (url.includes("/api/dashboard")) {
-        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
-      }
-      if (url.includes("/api/applications")) {
-        return jsonResponse({ applications: [] });
-      }
-      throw new Error(`Unexpected request to ${url}`);
-    });
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/email address/i)).toBeVisible();
-    });
-
-    signedIn = true;
-    failNextSession = true;
-    fireEvent(document, new Event("visibilitychange"));
-
-    await waitFor(
-      () => {
-        expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
-      },
-      { timeout: 3000 },
-    );
-  });
-
-  it("polls for the session while a magic link is outstanding", async () => {
-    let signedIn = false;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : (input as Request).url;
-      if (url.includes("/api/session")) {
-        return jsonResponse({
-          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
-        });
+        sessionRequests.count += 1;
+        return sessionResponse();
       }
       if (url.includes("/api/auth/magic-link")) {
         return jsonResponse({ sent: true });
@@ -422,9 +380,12 @@ describe("App", () => {
       }
       throw new Error(`Unexpected request to ${url}`);
     });
+    return sessionRequests;
+  }
 
-    render(<App />);
+  const signedInBody = { user: { id: "user-1", email: "person@example.com" } };
 
+  async function sendMagicLink() {
     await waitFor(() => {
       expect(screen.getByLabelText(/email address/i)).toBeVisible();
     });
@@ -435,51 +396,130 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText(/check your inbox/i)).toBeVisible();
     });
+  }
 
-    // The link is opened (and the session cookie set) in another tab; no
-    // event reaches this one.
-    signedIn = true;
+  describe("with fake timers", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
 
-    await waitFor(
-      () => {
+    it("retries a failed background re-check so a resumed iOS tab still catches up", async () => {
+      let signedIn = false;
+      let failNextSession = false;
+      mockSessionApi(() => {
+        if (failNextSession) {
+          failNextSession = false;
+          throw new TypeError("Load failed");
+        }
+        return jsonResponse(signedIn ? signedInBody : { user: null });
+      });
+
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByLabelText(/email address/i)).toBeVisible();
+      });
+
+      signedIn = true;
+      failNextSession = true;
+      fireEvent(document, new Event("visibilitychange"));
+      await act(() => vi.advanceTimersByTimeAsync(1500));
+
+      await waitFor(() => {
         expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
-      },
-      { timeout: 5000 },
-    );
+      });
+    });
+
+    it("polls for the session while a magic link is outstanding", async () => {
+      let signedIn = false;
+      mockSessionApi(() => jsonResponse(signedIn ? signedInBody : { user: null }));
+
+      render(<App />);
+      await sendMagicLink();
+
+      // The link is opened (and the session cookie set) in another tab; no
+      // event reaches this one.
+      signedIn = true;
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+      });
+    });
+
+    it("stops polling once the magic link has gone unused for the polling window", async () => {
+      const sessionRequests = mockSessionApi(() => jsonResponse({ user: null }));
+
+      render(<App />);
+      await sendMagicLink();
+
+      await act(() => vi.advanceTimersByTimeAsync(16 * 60 * 1000));
+      const countAfterWindow = sessionRequests.count;
+      await act(() => vi.advanceTimersByTimeAsync(60 * 1000));
+
+      expect(sessionRequests.count).toBe(countAfterWindow);
+    });
   });
 
-  it("re-checks the session when another tab announces a sign-in", async () => {
-    let signedIn = false;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = typeof input === "string" ? input : (input as Request).url;
-      if (url.includes("/api/session")) {
-        return jsonResponse({
-          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+  it("ignores an older session response that resolves after a newer one", async () => {
+    let resolveStale: ((response: Response) => void) | undefined;
+    let phase: "initial" | "stale" | "fresh" = "initial";
+    mockSessionApi(() => {
+      if (phase === "stale") {
+        return new Promise<Response>((resolve) => {
+          resolveStale = resolve;
         });
       }
-      if (url.includes("/api/dashboard")) {
-        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      if (phase === "fresh") {
+        return jsonResponse(signedInBody);
       }
-      if (url.includes("/api/applications")) {
-        return jsonResponse({ applications: [] });
-      }
-      throw new Error(`Unexpected request to ${url}`);
+      return jsonResponse({ user: null });
     });
 
     render(<App />);
-
     await waitFor(() => {
       expect(screen.getByLabelText(/email address/i)).toBeVisible();
     });
 
-    signedIn = true;
-    const otherTab = new BroadcastChannel("upgradr-auth");
-    otherTab.postMessage("signed-in");
-    otherTab.close();
-
+    phase = "stale";
+    fireEvent(document, new Event("visibilitychange"));
+    await waitFor(() => {
+      expect(resolveStale).toBeDefined();
+    });
+    phase = "fresh";
+    fireEvent(window, new Event("focus"));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
     });
+
+    await act(async () => {
+      resolveStale?.(jsonResponse({ user: null }));
+    });
+
+    expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    expect(screen.queryByLabelText(/email address/i)).not.toBeInTheDocument();
+  });
+
+  it("signs in a waiting tab as soon as another tab loads signed in", async () => {
+    let signedIn = false;
+    mockSessionApi(() => jsonResponse(signedIn ? signedInBody : { user: null }));
+
+    // The tab the magic link was requested from.
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    // The tab the magic link opens, already holding the session cookie.
+    signedIn = true;
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("heading", { name: /keep momentum visible/i })).toHaveLength(2);
+    });
+    expect(screen.queryByLabelText(/email address/i)).not.toBeInTheDocument();
   });
 
   it("lets a signed-in user open the profile menu and switch to the profile tab", async () => {

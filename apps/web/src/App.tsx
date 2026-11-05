@@ -89,6 +89,9 @@ const profileMenuItems: { id: ProfileMenuTab; label: string }[] = [
 ];
 
 
+const MAGIC_LINK_POLL_INTERVAL_MS = 3000;
+const MAGIC_LINK_POLL_WINDOW_MS = 15 * 60 * 1000;
+
 const emptyDashboard: DashboardSummary = {
   proposals: 0,
   active: 0,
@@ -122,30 +125,48 @@ export function App() {
     setApplications(applicationResult.applications);
   }, []);
 
-  // Lets other open tabs know when this one's auth state flips, so the tab
-  // the magic link was requested from catches up as soon as the tab the
-  // link opened in finishes signing in.
+  // Lets other open tabs know about this one's auth state, so the tab the
+  // magic link was requested from catches up as soon as the tab the link
+  // opened in loads signed in.
   const authChannelRef = useRef<BroadcastChannel | null>(null);
   const signedInRef = useRef<boolean | undefined>(undefined);
   const backgroundRetryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Many triggers (focus, visibility, polling, broadcasts, retries) can
+  // overlap; only the most recently started check may commit its result, so
+  // an older in-flight "signed out" answer can't overwrite a newer one.
+  const sessionCheckIdRef = useRef(0);
 
   const checkSession = useCallback(
     async (options?: { background?: boolean; isRetry?: boolean }) => {
+      const checkId = ++sessionCheckIdRef.current;
+      const isLatest = () => checkId === sessionCheckIdRef.current;
       try {
         const { user: sessionUser } = await api.getSession();
-        setUser(sessionUser);
+        if (!isLatest()) {
+          return;
+        }
+        clearTimeout(backgroundRetryRef.current);
+        backgroundRetryRef.current = undefined;
         const signedIn = Boolean(sessionUser);
-        // Only announce real transitions (never the initial load, and never
-        // a re-check that just confirms the same state) so two tabs can't
-        // keep re-triggering each other.
-        if (signedInRef.current !== undefined && signedInRef.current !== signedIn) {
-          authChannelRef.current?.postMessage(signedIn ? "signed-in" : "signed-out");
+        // Announce any signed-in result (including a fresh tab's initial
+        // load -- that's exactly the tab a magic link opens) unless this tab
+        // was already signed in, and announce sign-out only as a real
+        // transition. A receiving tab whose state doesn't change never
+        // rebroadcasts, so tabs can't keep re-triggering each other.
+        if (signedIn && signedInRef.current !== true) {
+          authChannelRef.current?.postMessage("signed-in");
+        } else if (!signedIn && signedInRef.current === true) {
+          authChannelRef.current?.postMessage("signed-out");
         }
         signedInRef.current = signedIn;
+        setUser(sessionUser);
         if (sessionUser) {
           await refreshWorkspace();
         }
       } catch {
+        if (!isLatest()) {
+          return;
+        }
         if (options?.background) {
           // A background re-check (see the effects below) failing -- a
           // transient network blip while a tab regains focus, say -- must
@@ -228,19 +249,26 @@ export function App() {
   // While a magic link is outstanding, the link is almost always opened in
   // a different tab than this one, and mobile browsers (iOS Safari
   // especially) don't reliably deliver the events above to the tab being
-  // returned to -- so poll lightly until the sign-in lands.
+  // returned to -- so poll lightly until the sign-in lands. Polling stops
+  // after a bounded window so a tab left open on an unused link doesn't
+  // poll forever; the event-driven checks above still apply afterward.
   const awaitingMagicLink = user === null && pendingOtpEmail !== undefined;
   useEffect(() => {
     if (!awaitingMagicLink) {
       return;
     }
+    const startedAt = Date.now();
     const interval = setInterval(() => {
+      if (Date.now() - startedAt > MAGIC_LINK_POLL_WINDOW_MS) {
+        clearInterval(interval);
+        return;
+      }
       if (document.visibilityState === "visible") {
         void checkSession({ background: true });
       }
-    }, 3000);
+    }, MAGIC_LINK_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [awaitingMagicLink, checkSession]);
+  }, [awaitingMagicLink, pendingOtpEmail, checkSession]);
 
   async function requestMagicLink(event: FormEvent) {
     event.preventDefault();
@@ -309,6 +337,8 @@ export function App() {
   }
 
   function markSignedOut() {
+    // Discard any session check still in flight from before sign-out.
+    sessionCheckIdRef.current += 1;
     setUser(null);
     if (signedInRef.current) {
       authChannelRef.current?.postMessage("signed-out");
