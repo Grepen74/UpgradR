@@ -329,6 +329,159 @@ describe("App", () => {
     });
   });
 
+  it("re-checks the session when the window regains focus", async () => {
+    let signedIn = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    signedIn = true;
+    fireEvent(window, new Event("focus"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+  });
+
+  it("retries a failed background re-check so a resumed iOS tab still catches up", async () => {
+    let signedIn = false;
+    let failNextSession = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        if (failNextSession) {
+          failNextSession = false;
+          throw new TypeError("Load failed");
+        }
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    signedIn = true;
+    failNextSession = true;
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("polls for the session while a magic link is outstanding", async () => {
+    let signedIn = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/auth/magic-link")) {
+        return jsonResponse({ sent: true });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: "person@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/check your inbox/i)).toBeVisible();
+    });
+
+    // The link is opened (and the session cookie set) in another tab; no
+    // event reaches this one.
+    signedIn = true;
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+      },
+      { timeout: 5000 },
+    );
+  });
+
+  it("re-checks the session when another tab announces a sign-in", async () => {
+    let signedIn = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (url.includes("/api/session")) {
+        return jsonResponse({
+          user: signedIn ? { id: "user-1", email: "person@example.com" } : null,
+        });
+      }
+      if (url.includes("/api/dashboard")) {
+        return jsonResponse({ proposals: 0, active: 0, overdue: 0 });
+      }
+      if (url.includes("/api/applications")) {
+        return jsonResponse({ applications: [] });
+      }
+      throw new Error(`Unexpected request to ${url}`);
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/email address/i)).toBeVisible();
+    });
+
+    signedIn = true;
+    const otherTab = new BroadcastChannel("upgradr-auth");
+    otherTab.postMessage("signed-in");
+    otherTab.close();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /keep momentum visible/i })).toBeVisible();
+    });
+  });
+
   it("lets a signed-in user open the profile menu and switch to the profile tab", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : (input as Request).url;

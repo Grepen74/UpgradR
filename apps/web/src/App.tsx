@@ -122,21 +122,44 @@ export function App() {
     setApplications(applicationResult.applications);
   }, []);
 
+  // Lets other open tabs know when this one's auth state flips, so the tab
+  // the magic link was requested from catches up as soon as the tab the
+  // link opened in finishes signing in.
+  const authChannelRef = useRef<BroadcastChannel | null>(null);
+  const signedInRef = useRef<boolean | undefined>(undefined);
+  const backgroundRetryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   const checkSession = useCallback(
-    async (options?: { background?: boolean }) => {
+    async (options?: { background?: boolean; isRetry?: boolean }) => {
       try {
         const { user: sessionUser } = await api.getSession();
         setUser(sessionUser);
+        const signedIn = Boolean(sessionUser);
+        // Only announce real transitions (never the initial load, and never
+        // a re-check that just confirms the same state) so two tabs can't
+        // keep re-triggering each other.
+        if (signedInRef.current !== undefined && signedInRef.current !== signedIn) {
+          authChannelRef.current?.postMessage(signedIn ? "signed-in" : "signed-out");
+        }
+        signedInRef.current = signedIn;
         if (sessionUser) {
           await refreshWorkspace();
         }
       } catch {
         if (options?.background) {
-          // A background re-check (see the effect below) failing -- a
+          // A background re-check (see the effects below) failing -- a
           // transient network blip while a tab regains focus, say -- must
           // not force an already-signed-in user back to the sign-in
-          // screen. Leave the current state alone; the next check, or a
-          // real reload, will resolve it.
+          // screen. Leave the current state alone. iOS Safari in
+          // particular often fires visibilitychange on a resumed tab before
+          // its network is usable again, so retry once shortly after rather
+          // than leaving the tab stale until the next event.
+          if (!options.isRetry) {
+            clearTimeout(backgroundRetryRef.current);
+            backgroundRetryRef.current = setTimeout(() => {
+              void checkSession({ background: true, isRetry: true });
+            }, 1500);
+          }
           return;
         }
         setMessage("UpgradR could not load your session.");
@@ -145,6 +168,23 @@ export function App() {
     },
     [refreshWorkspace],
   );
+
+  useEffect(() => () => clearTimeout(backgroundRetryRef.current), []);
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") {
+      return;
+    }
+    const channel = new BroadcastChannel("upgradr-auth");
+    authChannelRef.current = channel;
+    channel.onmessage = () => {
+      void checkSession({ background: true });
+    };
+    return () => {
+      channel.close();
+      authChannelRef.current = null;
+    };
+  }, [checkSession]);
 
   useEffect(() => {
     void checkSession();
@@ -169,13 +209,38 @@ export function App() {
         void checkSession({ background: true });
       }
     }
+    // Clicking back into a browser window that was never hidden (e.g. the
+    // mail client sat side by side with it) fires focus but no
+    // visibilitychange.
+    function handleFocus() {
+      void checkSession({ background: true });
+    }
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pageshow", handlePageShow);
+    window.addEventListener("focus", handleFocus);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pageshow", handlePageShow);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [checkSession]);
+
+  // While a magic link is outstanding, the link is almost always opened in
+  // a different tab than this one, and mobile browsers (iOS Safari
+  // especially) don't reliably deliver the events above to the tab being
+  // returned to -- so poll lightly until the sign-in lands.
+  const awaitingMagicLink = user === null && pendingOtpEmail !== undefined;
+  useEffect(() => {
+    if (!awaitingMagicLink) {
+      return;
+    }
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void checkSession({ background: true });
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [awaitingMagicLink, checkSession]);
 
   async function requestMagicLink(event: FormEvent) {
     event.preventDefault();
@@ -223,7 +288,7 @@ export function App() {
     setBusy(true);
     try {
       await api.signOut();
-      setUser(null);
+      markSignedOut();
       setDashboard(emptyDashboard);
       setApplications([]);
       resetSignInForm();
@@ -237,10 +302,18 @@ export function App() {
   // local state so the app falls back to the signed-out view, same as
   // signOut() above but without another round trip to /api/auth/sign-out.
   function onAccountDeleted() {
-    setUser(null);
+    markSignedOut();
     setDashboard(emptyDashboard);
     setApplications([]);
     resetSignInForm();
+  }
+
+  function markSignedOut() {
+    setUser(null);
+    if (signedInRef.current) {
+      authChannelRef.current?.postMessage("signed-out");
+    }
+    signedInRef.current = false;
   }
 
   // Whatever code/message was on screen belonged to the session that just
