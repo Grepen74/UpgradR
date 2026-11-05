@@ -451,7 +451,8 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getSession: () => apiRequest<{ user: SessionUser | null }>("/api/session"),
+  getSession: () =>
+    apiRequest<{ user: SessionUser | null }>("/api/session", { cache: "no-store" }),
   getDashboard: () => apiRequest<DashboardSummary>("/api/dashboard"),
   getApplications: () =>
     apiRequest<{ applications: ApplicationSummary[] }>("/api/applications"),

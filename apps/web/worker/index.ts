@@ -241,6 +241,9 @@ app.post("/api/auth/sign-out", async (context) => {
 });
 
 app.get("/api/session", async (context) => {
+  // Auth state changes underneath an unchanged URL (e.g. a magic link
+  // opened in another tab), so a cached answer is always potentially stale.
+  context.header("Cache-Control", "no-store");
   const supabase = createSupabaseServerClient(context);
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) {
